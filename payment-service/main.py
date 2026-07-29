@@ -145,31 +145,31 @@ class CircuitBreaker:
                 self.last_state_change = time.time()
 
 payment_circuit_breaker = CircuitBreaker()
-DLQ_TOPIC = "payment-failures-dlq"
+DLT_TOPIC = "payment-failures-dlt"
 
-def handle_dlq_dispatch(order_data: dict, reason: str):
-    """Sends failed transaction payloads to the Dead Letter Queue (DLQ)."""
-    dlq_payload = {
-        "dlq_id": f"dlq_{order_data['order_id']}_{int(time.time())}",
+def handle_dlt_dispatch(order_data: dict, reason: str):
+    """Sends failed transaction payloads to the Dead Letter Topic (DLT)."""
+    dlt_payload = {
+        "dlt_id": f"dlt_{order_data['order_id']}_{int(time.time())}",
         "reason": reason,
         "failed_at": datetime.utcnow().isoformat(),
         "original_payload": order_data
     }
     if kafka_producer:
         try:
-            kafka_producer.send(DLQ_TOPIC, value=dlq_payload)
+            kafka_producer.send(DLT_TOPIC, value=dlt_payload)
             kafka_producer.flush()
-            print(f"DLQ: Published failed transaction to Kafka topic '{DLQ_TOPIC}' successfully.")
+            print(f"DLT: Published failed transaction to Kafka topic '{DLT_TOPIC}' successfully.")
             return
         except Exception as e:
-            print(f"DLQ: Failed to publish to Kafka: {e}. Writing to fallback file.")
+            print(f"DLT: Failed to publish to Kafka: {e}. Writing to fallback file.")
             
-    # File-based DLQ fallback
-    dlq_dir = "./logs"
-    os.makedirs(dlq_dir, exist_ok=True)
-    with open(f"{dlq_dir}/dlq.jsonl", "a") as f:
-        f.write(json.dumps(dlq_payload) + "\n")
-    print(f"DLQ SIMULATOR: Failed transaction written to {dlq_dir}/dlq.jsonl (Reason: {reason})")
+    # File-based DLT fallback
+    dlt_dir = "./logs"
+    os.makedirs(dlt_dir, exist_ok=True)
+    with open(f"{dlt_dir}/dlt.jsonl", "a") as f:
+        f.write(json.dumps(dlt_payload) + "\n")
+    print(f"DLT SIMULATOR: Failed transaction written to {dlt_dir}/dlt.jsonl (Reason: {reason})")
 
 def publish_payment_failure_event(order_data: dict):
     """Publishes a payment-failed event for Saga compensating transaction."""
@@ -236,8 +236,8 @@ def process_and_persist_payment(order_data: dict):
 
     # 2. Circuit Breaker Check
     if not payment_circuit_breaker.can_execute():
-        print(f"Circuit Breaker is OPEN. Payment gateway call bypassed. Forwarding Order #{order_id} to DLQ.")
-        handle_dlq_dispatch(order_data, "Circuit Breaker OPEN - Gateway offline.")
+        print(f"Circuit Breaker is OPEN. Payment gateway call bypassed. Forwarding Order #{order_id} to DLT.")
+        handle_dlt_dispatch(order_data, "Circuit Breaker OPEN - Gateway offline.")
         publish_payment_failure_event(order_data)
         db.close()
         return
@@ -277,10 +277,10 @@ def process_and_persist_payment(order_data: dict):
             print(f"Retrying in {backoff} seconds...")
             time.sleep(backoff)
 
-    # 4. If all retries failed, send to DLQ
+    # 4. If all retries failed, send to DLT
     if not success and payment_status != "Failed":
-        print(f"All {max_retries} attempts failed or timed out. Dispatching Order #{order_id} to Dead Letter Queue (DLQ).")
-        handle_dlq_dispatch(order_data, "Gateway connection timeout after maximum retries.")
+        print(f"All {max_retries} attempts failed or timed out. Dispatching Order #{order_id} to Dead Letter Topic (DLT).")
+        handle_dlt_dispatch(order_data, "Gateway connection timeout after maximum retries.")
         publish_payment_failure_event(order_data)
         db.close()
         return
