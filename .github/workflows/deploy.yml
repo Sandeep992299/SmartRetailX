@@ -1,0 +1,148 @@
+name: SmartRetailX CI/CD Production Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 595529181954.dkr.ecr.us-east-1.amazonaws.com
+  ENVIRONMENT: production
+
+jobs:
+  # Job 1: Code Linting and Unit/Integration Tests
+  test:
+    name: Run Linting and Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/requirements.txt
+          pip install -r api-gateway/requirements.txt
+
+      - name: Run PyTest Tests
+        run: |
+          pytest tests/test_services.py
+
+  # Job 2: Build Docker Images and Push to Amazon ECR
+  build-and-push:
+    name: Build & Push Images to ECR
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Push Backend Microservices
+        run: |
+          for service in api-gateway user-service product-service order-service payment-service inventory-service notification-service frontend; do
+            echo "Building image for $service..."
+            docker build -t ${{ env.ECR_REGISTRY }}/smartretailx-$service:latest -t ${{ env.ECR_REGISTRY }}/smartretailx-$service:${{ github.sha }} ./$service
+            
+            echo "Pushing image to ECR..."
+            docker push ${{ env.ECR_REGISTRY }}/smartretailx-$service:latest
+            docker push ${{ env.ECR_REGISTRY }}/smartretailx-$service:${{ github.sha }}
+          done
+
+  # Job 3: Provision AWS Infrastructure via Terraform
+  terraform:
+    name: Deploy Infrastructure via Terraform
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Terraform Validate
+        run: |
+          cd terraform
+          terraform validate
+
+      - name: Terraform Apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve -var="environment=${{ env.ENVIRONMENT }}"
+
+  # Job 4: EKS rolling deployments rollout updates
+  deploy-eks:
+    name: Deploy Containers to Amazon EKS
+    needs: terraform
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure Kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name smartretailx-eks-${{ env.ENVIRONMENT }}
+
+      - name: Deploy Kubernetes Manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/
+
+      - name: Trigger Rolling Rollout Restarts on Microservices
+        run: |
+          for service in api-gateway user-service product-service order-service payment-service inventory-service notifications frontend; do
+            kubectl rollout restart deployment/$service -n smartretailx
+          done
+
+      - name: Verify Deployment Rollouts
+        run: |
+          for service in api-gateway user-service product-service order-service payment-service inventory-service notifications frontend; do
+            kubectl rollout status deployment/$service -n smartretailx --timeout=120s
+          done

@@ -89,13 +89,18 @@ def verify_jwt(token: str) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
+# In-memory Prometheus metrics storage
+metrics_requests_total = {}  # key: (method, path, status_code) -> count
+metrics_latency_sum = 0.0
+metrics_latency_count = 0
+
 @app.middleware("http")
 async def gateway_middleware(request: Request, call_next):
     # Get client IP
     client_ip = request.client.host if request.client else "unknown-ip"
     
-    # Apply Rate Limiting (exclude Swagger docs and static files)
-    if not request.url.path.startswith(("/docs", "/openapi.json", "/redoc")):
+    # Apply Rate Limiting (exclude Swagger docs, metrics endpoint, and static files)
+    if not request.url.path.startswith(("/docs", "/openapi.json", "/redoc", "/metrics")):
         if not check_rate_limit(client_ip):
             return Response(
                 content='{"detail": "Rate limit exceeded. Try again in a minute."}',
@@ -107,6 +112,16 @@ async def gateway_middleware(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
+    
+    # Record Prometheus metrics
+    global metrics_latency_sum, metrics_latency_count
+    metrics_latency_sum += duration
+    metrics_latency_count += 1
+    
+    # Avoid logging Swagger docs in request stats metrics
+    if not request.url.path.startswith(("/docs", "/openapi.json", "/redoc")):
+        key = (request.method, request.url.path, response.status_code)
+        metrics_requests_total[key] = metrics_requests_total.get(key, 0) + 1
     
     # Inject Custom API Gateway latency headers
     response.headers["X-Gateway-Latency-Seconds"] = f"{duration:.4f}"
@@ -214,6 +229,37 @@ async def health_check():
         "timestamp": time.time(),
         "redis_connected": redis_client is not None and bool(redis_client.ping())
     }
+
+from fastapi.responses import PlainTextResponse
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics():
+    """Exposes standard formatted Prometheus text metrics."""
+    global metrics_latency_sum, metrics_latency_count
+    lines = []
+    
+    # Total request counts
+    lines.append("# HELP api_gateway_requests_total Total number of HTTP requests handled by the API Gateway.")
+    lines.append("# TYPE api_gateway_requests_total counter")
+    for (method, path, status_code), count in metrics_requests_total.items():
+        lines.append(f'api_gateway_requests_total{{method="{method}",path="{path}",status="{status_code}"}} {count}')
+        
+    # Latency metric
+    lines.append("# HELP api_gateway_request_latency_seconds_sum Sum of request processing duration in seconds.")
+    lines.append("# TYPE api_gateway_request_latency_seconds_sum counter")
+    lines.append(f"api_gateway_request_latency_seconds_sum {metrics_latency_sum}")
+    
+    lines.append("# HELP api_gateway_request_latency_seconds_count Count of requests processed for latency computation.")
+    lines.append("# TYPE api_gateway_request_latency_seconds_count counter")
+    lines.append(f"api_gateway_request_latency_seconds_count {metrics_latency_count}")
+    
+    # Custom rate limiting metric
+    redis_status = 1 if redis_client is not None else 0
+    lines.append("# HELP api_gateway_redis_connected Status of connection to Redis backend.")
+    lines.append("# TYPE api_gateway_redis_connected gauge")
+    lines.append(f"api_gateway_redis_connected {redis_status}")
+    
+    return "\n".join(lines) + "\n"
 
 # Clean shutdown
 @app.on_event("shutdown")

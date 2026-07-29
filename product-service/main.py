@@ -94,9 +94,36 @@ def format_product_doc(doc) -> dict:
     }
 
 
+# In-memory metrics storage
+import time
+from fastapi import Request
+
+product_requests_total = {}
+product_latency_sum = 0.0
+product_latency_count = 0
+product_cache_hits = 0
+product_cache_misses = 0
+
+@app.middleware("http")
+async def product_metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    global product_latency_sum, product_latency_count
+    product_latency_sum += duration
+    product_latency_count += 1
+    
+    if not request.url.path.startswith(("/products/healthz", "/metrics")):
+        key = (request.method, request.url.path, response.status_code)
+        product_requests_total[key] = product_requests_total.get(key, 0) + 1
+        
+    return response
+
 # Routes
 @app.get("/products", response_model=List[ProductResponse])
 def get_products(category: Optional[str] = None):
+    global product_cache_hits, product_cache_misses
     # Try fetching from Redis cache first
     cache_key = f"products:all:{category or 'none'}"
     if redis_client:
@@ -104,11 +131,13 @@ def get_products(category: Optional[str] = None):
             cached_data = redis_client.get(cache_key)
             if cached_data:
                 print("Cache HIT - returning cached products list")
+                product_cache_hits += 1
                 return json.loads(cached_data)
         except Exception as e:
             print(f"Redis cache read error: {e}")
             
     print("Cache MISS - query database")
+    product_cache_misses += 1
     if db is None:
         return []
         
@@ -130,6 +159,7 @@ def get_products(category: Optional[str] = None):
 
 @app.get("/products/{product_id}", response_model=ProductResponse)
 def get_product(product_id: str):
+    global product_cache_hits, product_cache_misses
     # Try fetching individual product from cache
     cache_key = f"product:{product_id}"
     if redis_client:
@@ -137,6 +167,7 @@ def get_product(product_id: str):
             cached_data = redis_client.get(cache_key)
             if cached_data:
                 print(f"Cache HIT for product {product_id}")
+                product_cache_hits += 1
                 return json.loads(cached_data)
         except Exception as e:
             print(f"Redis cache read error: {e}")
@@ -144,6 +175,8 @@ def get_product(product_id: str):
     if db is None:
         raise HTTPException(status_code=503, detail="Database currently offline")
         
+    print(f"Cache MISS for product {product_id} - query database")
+    product_cache_misses += 1
     from bson import ObjectId
     try:
         db_product = db.products.find_one({"_id": ObjectId(product_id)})
@@ -266,3 +299,37 @@ def healthz():
         "redis_connected": redis_client is not None and bool(redis_client.ping()),
         "mongodb_connected": db is not None
     }
+
+from fastapi.responses import PlainTextResponse
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics():
+    """Exposes standard formatted Prometheus text metrics for product service."""
+    global product_latency_sum, product_latency_count, product_cache_hits, product_cache_misses
+    lines = []
+    
+    # Total request counts
+    lines.append("# HELP product_requests_total Total number of HTTP requests handled by the Product Service.")
+    lines.append("# TYPE product_requests_total counter")
+    for (method, path, status_code), count in product_requests_total.items():
+        lines.append(f'product_requests_total{{method="{method}",path="{path}",status="{status_code}"}} {count}')
+        
+    # Latency metric
+    lines.append("# HELP product_request_latency_seconds_sum Sum of request processing duration in seconds.")
+    lines.append("# TYPE product_request_latency_seconds_sum counter")
+    lines.append(f"product_request_latency_seconds_sum {product_latency_sum}")
+    
+    lines.append("# HELP product_request_latency_seconds_count Count of requests processed for latency computation.")
+    lines.append("# TYPE product_request_latency_seconds_count counter")
+    lines.append(f"product_request_latency_seconds_count {product_latency_count}")
+    
+    # Cache hit/miss metrics
+    lines.append("# HELP product_cache_hits_total Total count of Redis cache hits.")
+    lines.append("# TYPE product_cache_hits_total counter")
+    lines.append(f"product_cache_hits_total {product_cache_hits}")
+    
+    lines.append("# HELP product_cache_misses_total Total count of Redis cache misses.")
+    lines.append("# TYPE product_cache_misses_total counter")
+    lines.append(f"product_cache_misses_total {product_cache_misses}")
+    
+    return "\n".join(lines) + "\n"

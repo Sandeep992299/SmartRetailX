@@ -113,9 +113,10 @@ module "apigateway" {
 
 # 11. CloudFront Module (CDN distribution for EKS Ingress)
 module "cloudfront" {
-  source          = "./cloudfront"
-  environment     = var.environment
-  project_name    = var.project_name
-  eks_ingress_dns = var.eks_ingress_dns
+  source                = "./cloudfront"
+  environment           = var.environment
+  project_name          = var.project_name
+  eks_ingress_dns       = var.eks_ingress_dns
+  s3_bucket_domain_name = module.s3.bucket_regional_domain_name
 }
 

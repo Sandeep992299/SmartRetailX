@@ -9,3 +9,7 @@ variable "project_name" {
 variable "eks_ingress_dns" {
   type = string
 }
+
+variable "s3_bucket_domain_name" {
+  type = string
+}
