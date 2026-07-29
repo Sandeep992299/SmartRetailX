@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: smartretailx
+  labels:
+    app: payment-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+      - name: payment-service
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-payment-service:v1.0.0
+        ports:
+        - containerPort: 8004
+        resources:
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"
+        - name: DATABASE_URL
+          # In Production, this points to AWS RDS Instance
+          value: "postgresql://postgres:SuperSecurePass123!@rds-postgres-service:5432/smartretailx_payments"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: smartretailx
+spec:
+  ports:
+  - port: 8004
+    targetPort: 8004
+    nodePort: 30084
+  selector:
+    app: payment-service
+  type: NodePort

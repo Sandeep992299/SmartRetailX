@@ -1,0 +1,14 @@
+---
+# ============================================================
+# SmartRetailX Namespace
+# All microservices and infrastructure are scoped under this
+# namespace for isolation, RBAC, and resource quota management.
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smartretailx
+  labels:
+    name: smartretailx
+    project: smartretailx
+    managed-by: terraform

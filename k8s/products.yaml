@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: smartretailx
+  labels:
+    app: product-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+      - name: product-service
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-product-service:v1.0.0
+        ports:
+        - containerPort: 8002
+        resources:
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: MONGO_URI
+          value: "mongodb://mongodb:27017"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: smartretailx
+spec:
+  ports:
+  - port: 8002
+    targetPort: 8002
+    nodePort: 30082
+  selector:
+    app: product-service
+  type: NodePort

@@ -1,0 +1,179 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------
+  # Infrastructure Services
+  # ----------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sr_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: sr_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: smartretailx_payments
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:6.0
+    container_name: sr_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    restart: unless-stopped
+
+  zookeeper:
+    image: zookeeper:3.8
+    container_name: sr_zookeeper
+    ports:
+      - "2181:2181"
+    restart: unless-stopped
+
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: sr_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ADVERTISED_PORT: 9092
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CREATE_TOPICS: "order-events:3:1,payment-events:3:1,inventory-events:1:1"
+    restart: unless-stopped
+
+  # ----------------------------------------------------
+  # SmartRetailX Microservices
+  # ----------------------------------------------------
+  api-gateway:
+    build: ./api-gateway
+    container_name: sr_api_gateway
+    depends_on:
+      - redis
+      - user-service
+      - product-service
+      - order-service
+      - payment-service
+      - inventory-service
+    ports:
+      - "8000:8000"
+    environment:
+      - JWT_SECRET=smartretailx-super-secret-key-123456
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - USER_SERVICE_URL=http://user-service:8001
+      - PRODUCT_SERVICE_URL=http://product-service:8002
+      - ORDER_SERVICE_URL=http://order-service:8003
+      - PAYMENT_SERVICE_URL=http://payment-service:8004
+      - INVENTORY_SERVICE_URL=http://inventory-service:8005
+    restart: unless-stopped
+
+  user-service:
+    build: ./user-service
+    container_name: sr_user_service
+    depends_on:
+      - mongodb
+    ports:
+      - "8001:8001"
+    environment:
+      - JWT_SECRET=smartretailx-super-secret-key-123456
+      - MONGO_URI=mongodb://mongodb:27017
+    restart: unless-stopped
+
+  product-service:
+    build: ./product-service
+    container_name: sr_product_service
+    depends_on:
+      - mongodb
+      - redis
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MONGO_URI=mongodb://mongodb:27017
+    restart: unless-stopped
+
+  order-service:
+    build: ./order-service
+    container_name: sr_order_service
+    depends_on:
+      - mongodb
+      - kafka
+    ports:
+      - "8003:8003"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MONGO_URI=mongodb://mongodb:27017
+    restart: unless-stopped
+
+  payment-service:
+    build: ./payment-service
+    container_name: sr_payment_service
+    depends_on:
+      - postgres
+      - kafka
+    ports:
+      - "8004:8004"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/smartretailx_payments
+    restart: unless-stopped
+
+  inventory-service:
+    build: ./inventory-service
+    container_name: sr_inventory_service
+    depends_on:
+      - mongodb
+      - redis
+      - kafka
+    ports:
+      - "8005:8005"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MONGO_URI=mongodb://mongodb:27017
+    restart: unless-stopped
+
+  notification-service:
+    build: ./notification-service
+    container_name: sr_notification_service
+    depends_on:
+      - kafka
+    ports:
+      - "8006:8006"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    restart: unless-stopped
+
+  # ----------------------------------------------------
+  # Frontend Application
+  # ----------------------------------------------------
+  frontend:
+    build: ./frontend
+    container_name: sr_frontend
+    depends_on:
+      - api-gateway
+      - notification-service
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  mongodata:

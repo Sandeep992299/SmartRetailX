@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: smartretailx
+  labels:
+    app: user-service
+    project: smartretailx
+    component: user-service
+    version: v1.0.0
+    managed-by: kubectl
+  annotations:
+    description: "Handles user registration, authentication and JWT token management"
+    service-port: "8001"
+    nodeport: "30081"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+        project: smartretailx
+        version: v1.0.0
+    spec:
+      containers:
+      - name: user-service
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-user-service:v1.0.0
+        ports:
+        - containerPort: 8001
+        resources:
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        env:
+        - name: JWT_SECRET
+          value: "smartretailx-super-secret-key-123456"
+        - name: MONGO_URI
+          value: "mongodb://mongodb:27017"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: smartretailx
+  labels:
+    app: user-service
+    project: smartretailx
+    component: user-service
+  annotations:
+    description: "NodePort service exposing user-service on port 30081 to NLB target group"
+spec:
+  ports:
+  - port: 8001
+    targetPort: 8001
+    nodePort: 30081
+    name: http
+  selector:
+    app: user-service
+  type: NodePort
