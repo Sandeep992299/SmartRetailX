@@ -4,7 +4,7 @@ import time
 import threading
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -58,6 +58,9 @@ class OrderResponse(BaseModel):
     status: str
     created_at: str
     items: List[OrderItemBase]
+    ip_address: Optional[str] = "unknown-ip"
+    correlation_id: Optional[str] = "unknown-correlation"
+
 
 # FastAPI Initialization
 app = FastAPI(
@@ -147,15 +150,20 @@ def format_order_doc(doc) -> dict:
         "total_amount": doc["total_amount"],
         "status": doc.get("status", "Pending"),
         "created_at": doc.get("created_at", ""),
-        "items": doc["items"]
+        "items": doc["items"],
+        "ip_address": doc.get("ip_address", "unknown-ip"),
+        "correlation_id": doc.get("correlation_id", "unknown-correlation")
     }
 
 # Routes
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 def create_order(
+    request: Request,
     order_in: OrderCreate,
     x_user_id: Optional[str] = Header(None),
-    x_user_email: Optional[str] = Header(None)
+    x_user_email: Optional[str] = Header(None),
+    x_forwarded_for: Optional[str] = Header(None),
+    x_correlation_id: Optional[str] = Header(None)
 ):
     if not x_user_id:
         raise HTTPException(status_code=401, detail="Unauthorized - User session missing")
@@ -172,7 +180,9 @@ def create_order(
             "total_amount": total,
             "status": "Pending",
             "created_at": datetime.utcnow().isoformat(),
-            "items": items_list
+            "items": items_list,
+            "ip_address": x_forwarded_for or (request.client.host if request.client else "unknown-ip"),
+            "correlation_id": x_correlation_id or f"corr_fallback_{int(time.time())}"
         }
         
         result = db.orders.insert_one(order_doc)

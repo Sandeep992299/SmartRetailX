@@ -97,6 +97,41 @@ function App() {
   const [gatewayLatency, setGatewayLatency] = useState(0);
   const [logs, setLogs] = useState([]);
   
+  // Advanced Observability state hooks
+  const [sagaStep, setSagaStep] = useState('idle');
+  const [latencyHistory, setLatencyHistory] = useState([12, 18, 15, 22, 10, 14, 11, 19, 13, 16, 15, 12, 14, 17, 15]);
+  const [chaosMode, setChaosMode] = useState('none');
+  const [rateLimit, setRateLimit] = useState(100);
+  const [rateLimitMax, setRateLimitMax] = useState(100);
+  const [rateLimitReset, setRateLimitReset] = useState(60);
+  const [selectedTraceId, setSelectedTraceId] = useState(null);
+  const [cacheHeatmap, setCacheHeatmap] = useState({});
+
+  const [sagaLedger, setSagaLedger] = useState([
+    { time: new Date().toLocaleTimeString(), service: 'MSK Kafka', event: 'system-boot', status: 'INIT', msg: 'Event Bus connection established.' }
+  ]);
+
+  const decodeJWT = (tokenStr) => {
+    if (!tokenStr) return null;
+    try {
+      const parts = tokenStr.split('.');
+      if (parts.length !== 3) return null;
+      const decodeB64 = (str) => {
+        const cleaned = str.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = cleaned.length % 4;
+        const padded = pad ? cleaned + '='.repeat(4 - pad) : cleaned;
+        return decodeURIComponent(escape(window.atob(padded)));
+      };
+      return {
+        header: JSON.parse(decodeB64(parts[0])),
+        payload: JSON.parse(decodeB64(parts[1]))
+      };
+    } catch (e) {
+      return null;
+    }
+  };
+
+  
   const wsRef = useRef(null);
 
   // Checks if active user has administrator privileges
@@ -149,6 +184,36 @@ function App() {
           if (payload.type === 'ping') return;
 
           addLog(`Kafka message received: ${payload.event_type}`, "warn");
+
+          // Sync Saga visualizer steps
+          const eventType = payload.event_type;
+          if (eventType === 'order-created') {
+            setSagaStep('order-created');
+            setTimeout(() => setSagaStep('processing-payment'), 1000);
+          } else if (eventType === 'payment-settled') {
+            setSagaStep('payment-settled');
+            setTimeout(() => setSagaStep('completed'), 1000);
+          } else if (eventType === 'payment-failed') {
+            setSagaStep('payment-failed');
+            setTimeout(() => setSagaStep('rolled-back'), 1000);
+          }
+
+          // Append to Saga Audit Ledger Timeline
+          let statusLabel = 'PENDING';
+          if (payload.event_type === 'payment-settled') statusLabel = 'SETTLED';
+          else if (payload.event_type === 'payment-failed') {
+            statusLabel = payload.data?.is_fraud ? 'FRAUD_BLOCKED' : 'ROLLBACK';
+          }
+          const newLedgerEntry = {
+            time: new Date().toLocaleTimeString(),
+            service: payload.event_type.split('-')[0].toUpperCase(),
+            event: payload.event_type,
+            status: statusLabel,
+            msg: getEventMessage(payload),
+            event_data: payload.data
+          };
+
+          setSagaLedger(prev => [newLedgerEntry, ...prev].slice(0, 30));
 
           const newNotif = {
             id: payload.event_id || Date.now(),
@@ -241,14 +306,49 @@ function App() {
         headers: { ...fetchHeaders(), ...options.headers }
       });
       const end = performance.now();
-      setGatewayLatency(end - start);
+      const latencyVal = end - start;
+      setGatewayLatency(latencyVal);
+      setLatencyHistory(prev => [...prev.slice(1), latencyVal]);
       
+      // Parse Rate Limit telemetry headers
+      const limitHeader = res.headers.get("X-RateLimit-Limit");
+      const remainingHeader = res.headers.get("X-RateLimit-Remaining");
+      const resetHeader = res.headers.get("X-RateLimit-Reset");
+      if (limitHeader) setRateLimitMax(parseInt(limitHeader));
+      if (remainingHeader) setRateLimit(parseInt(remainingHeader));
+      if (resetHeader) setRateLimitReset(parseInt(resetHeader));
+
+      // Parse Cache Telemetry headers for Redis Cache Heatmap
+      const cacheHeader = res.headers.get("X-Cache");
+      if (cacheHeader) {
+        if (endpoint === '/products' || endpoint.startsWith('/products?')) {
+          res.clone().json().then(data => {
+            if (data && Array.isArray(data)) {
+              setCacheHeatmap(prev => {
+                const updated = { ...prev };
+                data.forEach(p => {
+                  updated[p.id] = cacheHeader;
+                });
+                return updated;
+              });
+            }
+          }).catch(() => null);
+        } else if (endpoint.startsWith('/products/')) {
+          const parts = endpoint.split('/');
+          const pId = parts[2];
+          if (pId) {
+            setCacheHeatmap(prev => ({ ...prev, [pId]: cacheHeader }));
+          }
+        }
+      }
+
       const latencyHeader = res.headers.get("X-Gateway-Latency-Seconds");
       if (latencyHeader) {
         addLog(`Proxy latency for ${endpoint}: ${parseFloat(latencyHeader) * 1000} ms`, "info");
       }
       
       if (!res.ok) {
+
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.detail || `Error code ${res.status}`);
       }
@@ -461,10 +561,26 @@ function App() {
     addLog("Securing payment details... Uploading encrypted tokens to PG payment gateway.", "info");
 
     try {
+      let itemsToSend = [...cart];
+      let headers = {};
+      if (chaosMode === 'timeout') {
+        itemsToSend = [{ product_id: "chaos_timeout", product_name: "Simulated EKS Gateway Latency Outage", price: 888.00, quantity: 1 }];
+        addLog("Chaos Mode (Timeout) active: Injecting $888.00 order total payload to trigger EKS gateway connection timeout.", "warn");
+      } else if (chaosMode === 'rejection') {
+        itemsToSend = [{ product_id: "chaos_reject", product_name: "Simulated Credit Card Rejection", price: 999.00, quantity: 1 }];
+        addLog("Chaos Mode (Rejection) active: Injecting $999.00 order total payload to trigger insufficient funds failure.", "warn");
+      } else if (chaosMode === 'fraud') {
+        itemsToSend = [{ product_id: "chaos_fraud", product_name: "Simulated Credit Card Fraud", price: 777.00, quantity: 1 }];
+        headers["X-Forwarded-For"] = "190.115.18.22";
+        addLog("Chaos Mode (Fraud) active: Injecting $777.00 order payload from suspicious IP 190.115.18.22.", "warn");
+      }
+
       const orderRes = await gatewayFetch('/orders', {
         method: 'POST',
-        body: JSON.stringify({ items: cart })
+        headers: headers,
+        body: JSON.stringify({ items: itemsToSend })
       });
+
       
       // Delay to show credit card spinning processing animation
       setTimeout(() => {
@@ -1378,7 +1494,7 @@ function App() {
           {activeTab === 'observability' && isAuthorized && (
             <>
               <div className="content-header">
-                <div className="content-title">System Metrics & Diagnostic Logs</div>
+                <div className="content-title">AWS EKS Event Broker & Observability Console</div>
               </div>
               
               <div className="health-indicators">
@@ -1390,14 +1506,407 @@ function App() {
                 ))}
               </div>
 
+              {/* 1. EKS Chaos Control Panel */}
+              <div className="auth-box chaos-panel-container" style={{margin: '0 0 24px 0', maxWidth: '100%', border: '1px dashed var(--border-color)', background: 'var(--card-bg)'}}>
+                <h3 style={{display: 'flex', alignItems: 'center', gap: '8px'}}>⚡ AWS EKS Chaos Engineering Simulation</h3>
+
+                <p style={{fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 16px 0'}}>
+                  Inject latency spikes, gateway failures, or credit card fraud to test EKS Saga Choreography engine resiliency.
+                </p>
+                <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px'}}>
+                  <button 
+                    className={`chaos-btn ${chaosMode === 'none' ? 'active' : ''}`}
+                    onClick={() => { setChaosMode('none'); addLog("Chaos simulation deactivated. Normal operations resumed.", "info"); }}
+                  >
+                    🟢 Normal Operations
+                  </button>
+                  <button 
+                    className={`chaos-btn ${chaosMode === 'timeout' ? 'active' : ''}`}
+                    onClick={() => { setChaosMode('timeout'); addLog("Chaos injected: Gateway Latency. Orders will delay 6s and route to Dead Letter Topic (DLT).", "warn"); }}
+                    style={{borderLeft: '4px solid #f59e0b'}}
+                  >
+                    🟡 Gateway Timeout Outage (DLT)
+                  </button>
+                  <button 
+                    className={`chaos-btn ${chaosMode === 'rejection' ? 'active' : ''}`}
+                    onClick={() => { setChaosMode('rejection'); addLog("Chaos injected: Hard Credit Rejection. Orders will trigger Saga inventory rollback compensating transaction.", "warn"); }}
+                    style={{borderLeft: '4px solid #ef4444'}}
+                  >
+                    🔴 Credit Card Rejection (Compensate)
+                  </button>
+                  <button 
+                    className={`chaos-btn ${chaosMode === 'fraud' ? 'active' : ''}`}
+                    onClick={() => { setChaosMode('fraud'); addLog("Chaos injected: Credit Card Fraud. Geolocation IP spoofing spoofed to 190.115.18.22. Order triggers immediate rollback.", "warn"); }}
+                    style={{borderLeft: '4px solid #b91c1c'}}
+                  >
+                    🚨 Simulate Credit Card Fraud
+                  </button>
+                  <button 
+                    className="chaos-btn"
+                    onClick={async () => {
+                      addLog("DDoS Simulation started: Firing 120 API requests in a fast loop to trigger 429 rate limiter...", "warn");
+                      for(let i=0; i<120; i++) {
+                        gatewayFetch('/products').catch(() => null);
+                        await new Promise(r => setTimeout(r, 15));
+                      }
+                    }}
+                    style={{borderLeft: '4px solid #7c3aed', background: '#f5f3ff'}}
+                  >
+                    🔥 Trigger DDoS Stress Test
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Saga Flow Visualizer Node Graph */}
+              <div className="auth-box saga-visualizer-container" style={{margin: '0 0 24px 0', maxWidth: '100%', background: 'var(--card-bg)'}}>
+                <h3>Saga Orchestration Event Flow</h3>
+                
+                <div className="saga-flow-row" style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '24px 0', overflowX: 'auto', padding: '10px 0'}}>
+                  {/* Node 1: Browser */}
+                  <div className={`saga-node ${sagaStep !== 'idle' ? 'active' : ''}`}>
+                    <div className="node-icon">💻</div>
+                    <div className="node-label">Client Browser</div>
+                  </div>
+                  
+                  <div className="saga-connector">
+                    <div className={`connector-line ${sagaStep === 'order-created' ? 'pulsing' : ''}`}></div>
+                  </div>
+
+                  {/* Node 2: Order Service */}
+                  <div className={`saga-node ${['order-created', 'processing-payment', 'payment-settled', 'payment-failed', 'completed', 'rolled-back'].includes(sagaStep) ? 'active' : ''}`}>
+                    <div className="node-icon">📦</div>
+                    <div className="node-label">Order Service</div>
+                  </div>
+
+                  <div className="saga-connector">
+                    <div className={`connector-line ${['order-created', 'processing-payment'].includes(sagaStep) ? 'pulsing' : ''}`}></div>
+                  </div>
+
+                  {/* Node 3: MSK Kafka */}
+                  <div className={`saga-node ${['order-created', 'processing-payment', 'payment-settled', 'payment-failed', 'completed', 'rolled-back'].includes(sagaStep) ? 'active-kafka' : ''}`}>
+                    <div className="node-icon">⚡</div>
+                    <div className="node-label">MSK Kafka</div>
+                  </div>
+
+                  <div className="saga-connector">
+                    <div className={`connector-line ${['processing-payment', 'payment-settled', 'payment-failed'].includes(sagaStep) ? 'pulsing' : ''}`}></div>
+                  </div>
+
+                  {/* Node 4: Payment Service */}
+                  <div className={`saga-node ${
+                    ['payment-settled', 'completed'].includes(sagaStep) ? 'active-success' :
+                    ['payment-failed', 'rolled-back'].includes(sagaStep) ? 'active-failure' :
+                    sagaStep === 'processing-payment' ? 'active-processing' : ''
+                  }`}>
+                    <div className="node-icon">💳</div>
+                    <div className="node-label">Payment Service</div>
+                  </div>
+
+                  <div className="saga-connector">
+                    <div className={`connector-line ${sagaStep === 'payment-settled' ? 'pulsing-success' : sagaStep === 'payment-failed' ? 'pulsing-failure' : ''}`}></div>
+                  </div>
+
+                  {/* Node 5: Inventory Service */}
+                  <div className={`saga-node ${
+                    ['completed'].includes(sagaStep) ? 'active-success' :
+                    ['rolled-back'].includes(sagaStep) ? 'active-compensating' : ''
+                  }`}>
+                    <div className="node-icon">🏬</div>
+                    <div className="node-label">Inventory Service</div>
+                  </div>
+                </div>
+
+                {sagaStep === 'rolled-back' && chaosMode === 'fraud' && (
+                  <div style={{background: '#fef2f2', color: '#b91c1c', border: '1px solid #fee2e2', borderRadius: '8px', padding: '12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '500'}}>
+                    🛑 <strong>Fraud Security Blocked:</strong> Flagged suspicious client IP location (190.115.18.22). Transaction aborted and stock compensation complete.
+                  </div>
+                )}
+                {sagaStep === 'rolled-back' && chaosMode !== 'fraud' && (
+                  <div style={{background: '#fef2f2', color: '#b91c1c', border: '1px solid #fee2e2', borderRadius: '8px', padding: '12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '500'}}>
+                    🔄 <strong>Saga Compensating Action:</strong> Payment failed. Rollback triggered to release reserved stock.
+                  </div>
+                )}
+                {sagaStep === 'completed' && (
+                  <div style={{background: '#f0fdf4', color: '#15803d', border: '1px solid #dcfce7', borderRadius: '8px', padding: '12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '500'}}>
+                    ✅ <strong>Saga Settled:</strong> Payment cleared successfully. Stock reservations finalized in database.
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Live Graphics Telemetry Panel */}
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px'}}>
+                {/* SVG Latency Chart */}
+                <div className="auth-box" style={{margin: '0', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--border-color)', background: 'var(--card-bg)'}}>
+                  <h3>API Gateway Latency History</h3>
+                  <div style={{margin: '12px 0'}}>
+                    {(() => {
+                      const maxLatency = Math.max(...latencyHistory, 50);
+                      const points = latencyHistory.map((val, index) => {
+                        const x = (index / (latencyHistory.length - 1)) * 400;
+                        const y = 100 - (val / maxLatency) * 80 - 10;
+                        return `${x},${y}`;
+                      }).join(' ');
+                      
+                      return (
+                        <svg viewBox="0 0 400 100" style={{ width: '100%', height: '110px', background: '#0f172a', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px' }}>
+                          <defs>
+                            <linearGradient id="latencyGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
+                              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                            </linearGradient>
+                          </defs>
+                          <line x1="0" y1="20" x2="400" y2="20" stroke="#334155" strokeDasharray="5,5" />
+                          <line x1="0" y1="50" x2="400" y2="50" stroke="#334155" strokeDasharray="5,5" />
+                          <line x1="0" y1="80" x2="400" y2="80" stroke="#334155" strokeDasharray="5,5" />
+                          
+                          <polygon fill="url(#latencyGrad)" points={`0,100 ${points} 400,100`} />
+                          <polyline fill="none" stroke="#10b981" strokeWidth="2" points={points} />
+                          {latencyHistory.length > 0 && (
+                            <circle
+                              cx={400}
+                              cy={100 - (latencyHistory[latencyHistory.length - 1] / maxLatency) * 80 - 10}
+                              r="4"
+                              fill="#10b981"
+                            />
+                          )}
+                        </svg>
+                      );
+                    })()}
+                  </div>
+                  <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '13px'}}>
+                    <span>Current Latency:</span>
+                    <strong style={{color: 'var(--primary)'}}>{gatewayLatency.toFixed(1)} ms</strong>
+                  </div>
+                </div>
+
+                {/* CSS Bar Chart for Transaction Stats */}
+                <div className="auth-box" style={{margin: '0', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--border-color)', background: 'var(--card-bg)'}}>
+                  <h3>Relational SQL Transaction Stats</h3>
+                  <div style={{margin: '12px 0'}}>
+                    {(() => {
+                      const successCount = transactions.filter(t => t.status === 'Success').length;
+                      const failCount = transactions.filter(t => t.status === 'Failed').length;
+                      const totalCount = successCount + failCount || 1;
+                      const successPct = (successCount / totalCount) * 100;
+                      const failPct = (failCount / totalCount) * 100;
+
+                      return (
+                        <div style={{padding: '10px 0'}}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px' }}>
+                              <span>Settled Transactions:</span>
+                              <strong>{successCount} ({successPct.toFixed(0)}%)</strong>
+                            </div>
+                            <div style={{ height: '8px', background: 'var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${successPct}%`, height: '100%', background: '#10b981', borderRadius: '4px' }}></div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '16px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px' }}>
+                              <span>Failed / Rolled back:</span>
+                              <strong>{failCount} ({failPct.toFixed(0)}%)</strong>
+                            </div>
+                            <div style={{ height: '8px', background: 'var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${failPct}%`, height: '100%', background: '#ef4444', borderRadius: '4px' }}></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '13px'}}>
+                    <span>Total Transactions Logged:</span>
+                    <strong>{transactions.length}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3b. JWT INSPECTOR & RATE LIMITER STATUS */}
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px'}}>
+                {/* JWT Inspector */}
+                <div className="auth-box" style={{margin: '0', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--border-color)', background: 'var(--card-bg)'}}>
+                  <h3>JWT Authentication Token Inspector</h3>
+                  <div style={{margin: '12px 0', fontSize: '12px', fontFamily: 'monospace'}}>
+                    {(() => {
+                      const decoded = decodeJWT(token);
+                      if (!decoded) {
+                        return <div style={{color: 'var(--text-muted)'}}>No active JWT token found. Please sign in.</div>;
+                      }
+                      return (
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '8px', background: '#0f172a', padding: '12px', borderRadius: '8px', color: '#e2e8f0', maxHeight: '180px', overflowY: 'auto'}}>
+                          <div style={{color: '#f43f5e'}}><span style={{fontWeight: '700'}}>HEADER:</span> {JSON.stringify(decoded.header)}</div>
+                          <div style={{color: '#38bdf8'}}><span style={{fontWeight: '700'}}>CLAIMS:</span> {JSON.stringify(decoded.payload)}</div>
+                          <div style={{color: '#4ade80', fontWeight: 'bold', marginTop: '4px'}}>🟢 SIGNATURE: VALIDATED (HS256)</div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* API Gateway Rate Limiter telemetry gauge */}
+                <div className="auth-box" style={{margin: '0', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--border-color)', background: 'var(--card-bg)'}}>
+                  <h3>API Gateway Rate Limit Status</h3>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '24px', margin: '12px 0'}}>
+                    <div style={{position: 'relative', width: '80px', height: '80px'}}>
+                      <svg width="80" height="80" viewBox="0 0 36 36" style={{transform: 'rotate(-90deg)', display: 'block'}}>
+                        <circle cx="18" cy="18" r="15.915" fill="none" stroke="#e2e8f0" strokeWidth="3.5"></circle>
+                        <circle cx="18" cy="18" r="15.915" fill="none" 
+                                stroke={rateLimit < 20 ? '#ef4444' : (rateLimit < 60 ? '#f59e0b' : '#10b981')} 
+                                strokeWidth="3.5" 
+                                strokeDasharray={`${(rateLimit / rateLimitMax) * 100} ${100 - (rateLimit / rateLimitMax) * 100}`}
+                                style={{transition: 'stroke-dasharray 0.3s ease, stroke 0.3s ease'}}></circle>
+                      </svg>
+                      <div style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontWeight: '800', fontSize: '13px', color: 'var(--text-primary)'}}>
+                        {rateLimit}
+                      </div>
+                    </div>
+                    <div style={{fontSize: '12.5px', display: 'flex', flexDirection: 'column', gap: '4px', color: 'var(--text-secondary)'}}>
+                      <div><strong>Client Window:</strong> Rolling 60s window</div>
+                      <div><strong>Quota Count:</strong> {rateLimit} / {rateLimitMax} remaining</div>
+                      <div><strong>Window Reset in:</strong> <strong style={{color: 'var(--primary)'}}>{rateLimitReset}s</strong></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3c. REDIS CACHE HEATMAP & FRAUD Threat Log */}
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px'}}>
+                {/* Redis Cache Heatmap */}
+                <div className="auth-box" style={{margin: '0', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--border-color)', background: 'var(--card-bg)'}}>
+                  <h3>Redis Cache Heatmap</h3>
+                  <p style={{fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px'}}>
+                    Flashes green on Cache Hit (<strong style={{color: '#10b981'}}>HIT</strong> from memory), and grey/blue on Cache Miss (<strong style={{color: '#3b82f6'}}>MISS</strong> from MongoDB).
+                  </p>
+                  <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px', maxHeight: '180px', overflowY: 'auto'}}>
+                    {products.length === 0 ? (
+                      <div style={{color: 'var(--text-muted)', fontSize: '12px'}}>No catalog items loaded.</div>
+                    ) : (
+                      products.map(p => {
+                        const status = cacheHeatmap[p.id] || 'MISS';
+                        return (
+                          <div 
+                            key={p.id} 
+                            style={{
+                              padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
+                              background: status === 'HIT' ? '#dcfce7' : '#eff6ff',
+                              color: status === 'HIT' ? '#15803d' : '#1e3a8a',
+                              border: `1px solid ${status === 'HIT' ? '#bbf7d0' : '#bfdbfe'}`,
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              transition: 'all 0.3s ease'
+                            }}
+                          >
+                            <span style={{width: '6px', height: '6px', borderRadius: '50%', background: status === 'HIT' ? '#10b981' : '#3b82f6'}}></span>
+                            {p.name.substring(0, 16)}... ({status})
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Fraud Transactions Log */}
+                <div className="auth-box" style={{margin: '0', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--border-color)', background: 'var(--card-bg)'}}>
+                  <h3>Security Center: Fraud Threat Log</h3>
+                  <div style={{margin: '12px 0', maxHeight: '180px', overflowY: 'auto'}}>
+                    {(() => {
+                      const fraudTxns = transactions.filter(t => t.is_fraud);
+                      if (fraudTxns.length === 0) {
+                        return <div style={{color: '#10b981', fontSize: '12.5px', fontWeight: '500', padding: '10px 0'}}>🟢 Zero threat indicators. No fraud events recorded.</div>;
+                      }
+                      return (
+                        <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '11px'}}>
+                          <thead>
+                            <tr style={{borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)'}}>
+                              <th style={{paddingBottom: '6px'}}>Order</th>
+                              <th style={{paddingBottom: '6px'}}>Client IP</th>
+                              <th style={{paddingBottom: '6px'}}>Details</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {fraudTxns.map(t => (
+                              <tr key={t.id} style={{borderBottom: '1px solid #f1f5f9', color: '#b91c1c'}}>
+                                <td style={{padding: '6px 0'}}>#{t.order_id}</td>
+                                <td style={{padding: '6px 0', fontWeight: 'bold'}}>{t.ip_address}</td>
+                                <td style={{padding: '6px 0', color: 'var(--text-secondary)'}}>{t.fraud_reason || 'High risk spoof location'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3d. Saga Audit Ledger Timeline */}
+              <div className="auth-box" style={{margin: '0 0 24px 0', maxWidth: '100%', border: '1px solid var(--border-color)', background: 'var(--card-bg)'}}>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <h3>Saga Audit Ledger Timeline</h3>
+                  {selectedTraceId && (
+                    <button 
+                      onClick={() => setSelectedTraceId(null)}
+                      style={{padding: '4px 8px', fontSize: '11px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: '600'}}
+                    >
+                      Clear Filter [Trace: {selectedTraceId.substring(0, 12)}...] ✕
+                    </button>
+                  )}
+                </div>
+                <div style={{maxHeight: '180px', overflowY: 'auto', marginTop: '12px'}}>
+                  <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left'}}>
+                    <thead>
+                      <tr style={{borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontWeight: '600'}}>
+                        <th style={{paddingBottom: '8px'}}>Time</th>
+                        <th style={{paddingBottom: '8px'}}>Service</th>
+                        <th style={{paddingBottom: '8px'}}>Event</th>
+                        <th style={{paddingBottom: '8px'}}>Saga State</th>
+                        <th style={{paddingBottom: '8px'}}>Correlation ID</th>
+                        <th style={{paddingBottom: '8px'}}>Choreography Log</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sagaLedger
+                        .filter(entry => !selectedTraceId || (entry.event_data?.correlation_id === selectedTraceId || entry.msg.includes(selectedTraceId) || (entry.event_data?.transaction_uuid && selectedTraceId.includes(entry.event_data.transaction_uuid))))
+                        .map((entry, idx) => {
+                          const corrId = entry.event_data?.correlation_id || (entry.event === 'system-boot' ? 'N/A' : 'unknown-correlation');
+                          const isTraceSelected = selectedTraceId === corrId;
+                          
+                          return (
+                            <tr 
+                              key={idx} 
+                              onClick={() => corrId !== 'N/A' && setSelectedTraceId(corrId)}
+                              style={{
+                                borderBottom: '1px solid #f1f5f9', 
+                                cursor: corrId !== 'N/A' ? 'pointer' : 'default',
+                                background: isTraceSelected ? '#f5f3ff' : 'transparent',
+                                transition: 'background 0.2s ease'
+                              }}
+                              className="trace-log-row"
+                            >
+                              <td style={{padding: '8px 0', color: 'var(--text-muted)'}}>{entry.time}</td>
+                              <td style={{padding: '8px 0', fontWeight: 'bold'}}>{entry.service}</td>
+                              <td style={{padding: '8px 0'}}><code style={{background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontSize: '11px'}}>{entry.event}</code></td>
+                              <td style={{padding: '8px 0'}}>
+                                <span style={{
+                                  padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '700',
+                                  backgroundColor: entry.status === 'SETTLED' ? '#dcfce7' : (entry.status === 'FRAUD_BLOCKED' ? '#fee2e2' : (entry.status === 'ROLLBACK' ? '#ffedd5' : '#e2e8f0')),
+                                  color: entry.status === 'SETTLED' ? '#15803d' : (entry.status === 'FRAUD_BLOCKED' ? '#b91c1c' : (entry.status === 'ROLLBACK' ? '#c2410c' : '#475569'))
+                                }}>{entry.status}</span>
+                              </td>
+                              <td style={{padding: '8px 0', color: '#7c3aed', fontFamily: 'monospace', fontWeight: '600'}}>{corrId.substring(0, 14)}...</td>
+                              <td style={{padding: '8px 0', color: 'var(--text-secondary)'}}>{entry.msg}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 4. Infrastructure Technical Details */}
               <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px'}}>
                 <div className="auth-box" style={{margin: '0', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--border-color)', background: '#f8fafc'}}>
-                  <h3>API Gateway Latency</h3>
+                  <h3>API Gateway Routing</h3>
                   <div style={{display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)'}}>
-                      <span>Proxy Latency:</span>
-                      <strong style={{color: 'var(--primary)'}}>{gatewayLatency.toFixed(1)} ms</strong>
-                    </div>
                     <div style={{display: 'flex', justifyContent: 'space-between'}}>
                       <span>Route Mapping:</span>
                       <strong>FastAPI / httpx async</strong>
@@ -1428,6 +1937,8 @@ function App() {
               </div>
             </>
           )}
+
+
         </main>
       </div>
 

@@ -1,7 +1,7 @@
 import os
 import json
 from typing import List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -122,7 +122,7 @@ async def product_metrics_middleware(request: Request, call_next):
 
 # Routes
 @app.get("/products", response_model=List[ProductResponse])
-def get_products(category: Optional[str] = None):
+def get_products(response: Response, category: Optional[str] = None):
     global product_cache_hits, product_cache_misses
     # Try fetching from Redis cache first
     cache_key = f"products:all:{category or 'none'}"
@@ -132,12 +132,14 @@ def get_products(category: Optional[str] = None):
             if cached_data:
                 print("Cache HIT - returning cached products list")
                 product_cache_hits += 1
+                response.headers["X-Cache"] = "HIT"
                 return json.loads(cached_data)
         except Exception as e:
             print(f"Redis cache read error: {e}")
             
     print("Cache MISS - query database")
     product_cache_misses += 1
+    response.headers["X-Cache"] = "MISS"
     if db is None:
         return []
         
@@ -158,7 +160,7 @@ def get_products(category: Optional[str] = None):
     return products
 
 @app.get("/products/{product_id}", response_model=ProductResponse)
-def get_product(product_id: str):
+def get_product(product_id: str, response: Response):
     global product_cache_hits, product_cache_misses
     # Try fetching individual product from cache
     cache_key = f"product:{product_id}"
@@ -168,6 +170,7 @@ def get_product(product_id: str):
             if cached_data:
                 print(f"Cache HIT for product {product_id}")
                 product_cache_hits += 1
+                response.headers["X-Cache"] = "HIT"
                 return json.loads(cached_data)
         except Exception as e:
             print(f"Redis cache read error: {e}")
@@ -177,6 +180,7 @@ def get_product(product_id: str):
         
     print(f"Cache MISS for product {product_id} - query database")
     product_cache_misses += 1
+    response.headers["X-Cache"] = "MISS"
     from bson import ObjectId
     try:
         db_product = db.products.find_one({"_id": ObjectId(product_id)})

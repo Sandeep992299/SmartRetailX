@@ -55,16 +55,20 @@ http_client = httpx.AsyncClient()
 RATE_LIMIT_MAX = 100
 RATE_LIMIT_WINDOW = 60
 
-def check_rate_limit(client_ip: str) -> bool:
-    """Checks if client IP is within rate limits. Returns True if OK, False if rate limited."""
+def check_rate_limit(client_ip: str) -> tuple:
+    """Checks if client IP is within rate limits. Returns (allowed, remaining, reset_seconds)."""
     now = int(time.time())
+    reset_seconds = RATE_LIMIT_WINDOW - (now % RATE_LIMIT_WINDOW)
+    
     if redis_client:
         try:
             key = f"rate_limit:{client_ip}:{now // RATE_LIMIT_WINDOW}"
             requests = redis_client.incr(key)
             if requests == 1:
                 redis_client.expire(key, RATE_LIMIT_WINDOW)
-            return requests <= RATE_LIMIT_MAX
+            allowed = requests <= RATE_LIMIT_MAX
+            remaining = max(0, RATE_LIMIT_MAX - requests)
+            return allowed, remaining, reset_seconds
         except Exception as e:
             print(f"Redis rate limit error: {e}. Falling back to in-memory.")
     
@@ -73,11 +77,13 @@ def check_rate_limit(client_ip: str) -> bool:
     count = in_memory_rate_limits.get(key, 0) + 1
     in_memory_rate_limits[key] = count
     
-    # Clean up old keys periodically
     if len(in_memory_rate_limits) > 5000:
         in_memory_rate_limits.clear()
         
-    return count <= RATE_LIMIT_MAX
+    allowed = count <= RATE_LIMIT_MAX
+    remaining = max(0, RATE_LIMIT_MAX - count)
+    return allowed, remaining, reset_seconds
+
 
 def verify_jwt(token: str) -> dict:
     """Decodes and validates JWT token."""
@@ -99,17 +105,31 @@ async def gateway_middleware(request: Request, call_next):
     # Get client IP
     client_ip = request.client.host if request.client else "unknown-ip"
     
+    # Generate/Retrieve Correlation ID
+    correlation_id = request.headers.get("X-Correlation-ID") or f"corr_{int(time.time())}_{os.urandom(4).hex()}"
+    
     # Apply Rate Limiting (exclude Swagger docs, metrics endpoint, and static files)
+    allowed, remaining, reset_seconds = True, RATE_LIMIT_MAX, 60
     if not request.url.path.startswith(("/docs", "/openapi.json", "/redoc", "/metrics")):
-        if not check_rate_limit(client_ip):
-            return Response(
+        allowed, remaining, reset_seconds = check_rate_limit(client_ip)
+        if not allowed:
+            res = Response(
                 content='{"detail": "Rate limit exceeded. Try again in a minute."}',
                 status_code=429,
                 media_type="application/json"
             )
+            res.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_MAX)
+            res.headers["X-RateLimit-Remaining"] = "0"
+            res.headers["X-RateLimit-Reset"] = str(reset_seconds)
+            res.headers["X-Correlation-ID"] = correlation_id
+            return res
             
     # Measure request latency
     start_time = time.time()
+    
+    # Inject Correlation ID into request state to pass it to proxy_request
+    request.state.correlation_id = correlation_id
+    
     response = await call_next(request)
     duration = time.time() - start_time
     
@@ -123,10 +143,15 @@ async def gateway_middleware(request: Request, call_next):
         key = (request.method, request.url.path, response.status_code)
         metrics_requests_total[key] = metrics_requests_total.get(key, 0) + 1
     
-    # Inject Custom API Gateway latency headers
+    # Inject Custom API Gateway metrics and telemetry headers
     response.headers["X-Gateway-Latency-Seconds"] = f"{duration:.4f}"
     response.headers["X-API-Version"] = "v1"
+    response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_MAX)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Reset"] = str(reset_seconds)
     return response
+
 
 # Reverse proxy routing logic
 async def proxy_request(service_url: str, path: str, request: Request) -> Response:
@@ -137,6 +162,12 @@ async def proxy_request(service_url: str, path: str, request: Request) -> Respon
         
     # Read headers and request body
     headers = dict(request.headers)
+    
+    # Inject Correlation ID into downstream headers
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if correlation_id:
+        headers["X-Correlation-ID"] = correlation_id
+
     
     # Check authorization JWT for secured endpoints
     auth_header = headers.get("authorization")
@@ -149,6 +180,8 @@ async def proxy_request(service_url: str, path: str, request: Request) -> Respon
             headers["X-User-Id"] = str(user_payload.get("user_id", ""))
             headers["X-User-Role"] = user_payload.get("role", "Customer")
             headers["X-User-Email"] = user_payload.get("email", "")
+            headers["X-Forwarded-For"] = request.client.host if request.client else "unknown-ip"
+
         except HTTPException as e:
             return Response(content=f'{{"detail": "{e.detail}"}}', status_code=e.status_code, media_type="application/json")
 

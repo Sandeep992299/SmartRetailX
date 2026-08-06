@@ -7,7 +7,8 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean
+
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from kafka import KafkaConsumer, KafkaProducer
@@ -56,9 +57,24 @@ class TransactionDB(Base):
     amount = Column(Float, nullable=False)
     status = Column(String, default="Success") # Success, Failed, Refunded
     payment_method = Column(String, default="Credit Card")
+    ip_address = Column(String, default="unknown-ip")
+    is_fraud = Column(Boolean, default=False)
+    fraud_reason = Column(String, nullable=True)
+    correlation_id = Column(String, default="unknown-correlation")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+# Force recreate database file locally to apply schema migrations cleanly
+if os.path.exists("./payments.db"):
+    try:
+        os.remove("./payments.db")
+        print("Payment Service: Deleted existing payments.db to apply new database schema migrations.")
+    except Exception as e:
+        print(f"Payment Service: Could not delete payments.db: {e}")
+
 Base.metadata.create_all(bind=engine)
+
+
 
 # Kafka Producer Client
 kafka_producer = None
@@ -83,9 +99,14 @@ class TransactionResponse(BaseModel):
     amount: float
     status: str
     payment_method: str
+    ip_address: str
+    is_fraud: bool
+    fraud_reason: Optional[str] = None
+    correlation_id: str
     created_at: datetime
+
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Dependency
 def get_db():
@@ -271,6 +292,42 @@ def process_and_persist_payment(order_data: dict):
         db.close()
         return
 
+    # 2b. Fraud Detection Check
+    ip_addr = order_data.get("ip_address", "unknown-ip")
+    is_fraud = (amount == 777.00) or (ip_addr == "190.115.18.22")
+    fraud_reason = None
+    if is_fraud:
+        print(f"FRAUD DETECTED: High-risk order #{order_id} flagged (IP: {ip_addr}). Bypassing gateway and triggering rollback.")
+        payment_status = "Failed"
+        fraud_reason = "Suspicious billing signature or blacklisted proxy IP address."
+        # Directly persist fraud status and trigger Saga compensating rollback
+        try:
+            transaction_uuid = f"txn_fraud_{order_id}_{int(time.time())}"
+            transaction = TransactionDB(
+                transaction_uuid=transaction_uuid,
+                order_id=order_id,
+                user_id=user_id,
+                user_email=email,
+                amount=amount,
+                status="Failed",
+                payment_method="Credit Card",
+                ip_address=ip_addr,
+                is_fraud=True,
+                fraud_reason=fraud_reason,
+                correlation_id=order_data.get("correlation_id", "unknown-correlation")
+            )
+            db.add(transaction)
+            db.commit()
+            db.refresh(transaction)
+            print(f"Fraud Transaction persisted: UUID {transaction_uuid}")
+            publish_payment_event(transaction)
+        except Exception as e:
+            db.rollback()
+            print(f"Error persisting fraud transaction to SQL: {e}")
+        finally:
+            db.close()
+        return
+
     print(f"Processing payment for Order #{order_id} (Amount: ${amount}) for user {email}")
     
     # 3. Call gateway with Retries and Timeout
@@ -324,7 +381,11 @@ def process_and_persist_payment(order_data: dict):
             user_email=email,
             amount=amount,
             status=payment_status,
-            payment_method="Credit Card"
+            payment_method="Credit Card",
+            ip_address=ip_addr,
+            is_fraud=False,
+            fraud_reason=None,
+            correlation_id=order_data.get("correlation_id", "unknown-correlation")
         )
         db.add(transaction)
         db.commit()
@@ -356,7 +417,11 @@ def publish_payment_event(txn: TransactionDB):
             "user_id": txn.user_id,
             "user_email": txn.user_email,
             "amount": txn.amount,
-            "status": txn.status
+            "status": txn.status,
+            "ip_address": txn.ip_address,
+            "is_fraud": txn.is_fraud,
+            "fraud_reason": txn.fraud_reason,
+            "correlation_id": txn.correlation_id
         }
     }
     

@@ -48,6 +48,29 @@ def send_ses_email(subject: str, html_body: str, recipient: str = None):
     except Exception as e:
         print(f"SES: Unexpected error sending email: {e}")
 
+import urllib.request
+
+def send_slack_webhook(text: str):
+    """Sends a notification payload to Slack/Discord webhook URL if configured."""
+    url = os.getenv("SLACK_WEBHOOK_URL")
+    if not url:
+        print("Slack: Webhook URL not set. Bypassing Slack notification.")
+        return
+        
+    print(f"Slack: Posting notification: {text}")
+    try:
+        payload = json.dumps({"text": text}).encode('utf-8')
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            print("Slack: Webhook notification posted successfully!")
+    except Exception as e:
+        print(f"Slack: Error posting webhook: {e}")
+
+
 # ----------------------------------------------------
 # 1. AWS Lambda Handler Entrypoint (Task 4 Event-Driven Lambda)
 # ----------------------------------------------------
@@ -74,7 +97,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if event_type == "payment-settled":
                 print(f"NOTIFY: Order #{event_data.get('order_id')} paid successfully. User email: {event_data.get('user_email')}")
             elif event_type == "payment-failed":
-                print(f"ALERT: Payment failure for Order #{event_data.get('order_id')}")
+                order_id = event_data.get('order_id')
+                is_fraud = event_data.get('is_fraud', False)
+                print(f"ALERT: Payment failure for Order #{order_id} (Fraud: {is_fraud})")
+                if is_fraud:
+                    ip_addr = event_data.get('ip_address', 'unknown-ip')
+                    reason = event_data.get('fraud_reason', 'Suspicious activity.')
+                    subject = f"🛑 CRITICAL FRAUD ALERT: Order #{order_id}"
+                    html_body = f"<h3>Suspicious Fraud Alert</h3><p>Order <strong>#{order_id}</strong> has been cancelled and flagged as fraud.</p><p><strong>IP Address:</strong> {ip_addr}</p><p><strong>Reason:</strong> {reason}</p>"
+                    send_ses_email(subject, html_body)
+                    send_slack_webhook(f"🚨 *CRITICAL FRAUD BLOCKED* 🚨\nOrder #{order_id} flagged as *FRAUD* from IP `{ip_addr}`. Reason: {reason}")
             elif event_type == "low-stock-alert":
                 product_name = event_data.get('product_name', 'Unknown Product')
                 product_id = event_data.get('product_id', 'N/A')
@@ -85,6 +117,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 subject = f"ALERT: Low Stock for Product '{product_name}'"
                 html_body = f"<h3>SmartRetailX Inventory Alert</h3><p>The stock level for product <strong>{product_name}</strong> (ID: {product_id}) has fallen below the threshold.</p><p><strong>Current Stock count:</strong> {stock_count}</p><p>Please restock immediately.</p>"
                 send_ses_email(subject, html_body)
+                send_slack_webhook(f"⚠️ *LOW STOCK ALERT* ⚠️\nProduct *{product_name}* (ID: {product_id}) is down to *{stock_count}* units!")
+
                 
             notifications_sent += 1
         except Exception as e:
@@ -240,16 +274,28 @@ async def queue_event_dispatcher():
         print(f"Broadcasting event to WebSockets: {event.get('event_type')}")
         await manager.broadcast(event)
         
-        # Trigger SES email on low-stock events
+        # Trigger alerts on specific events
         event_type = event.get("event_type")
+        event_data = event.get("data", {})
         if event_type == "low-stock-alert":
-            event_data = event.get("data", {})
             product_name = event_data.get("product_name", "Unknown Product")
             product_id = event_data.get("product_id", "N/A")
             stock_count = event_data.get("stock_count", 0)
             subject = f"ALERT: Low Stock for Product '{product_name}'"
             html_body = f"<h3>SmartRetailX Inventory Alert</h3><p>The stock level for product <strong>{product_name}</strong> (ID: {product_id}) has fallen below the threshold.</p><p><strong>Current Stock count:</strong> {stock_count}</p><p>Please restock immediately.</p>"
             send_ses_email(subject, html_body)
+            send_slack_webhook(f"⚠️ *LOW STOCK ALERT* ⚠️\nProduct *{product_name}* (ID: {product_id}) is down to *{stock_count}* units!")
+        elif event_type == "payment-failed":
+            order_id = event_data.get("order_id")
+            is_fraud = event_data.get("is_fraud", False)
+            if is_fraud:
+                ip_addr = event_data.get("ip_address", "unknown-ip")
+                reason = event_data.get("fraud_reason", "Suspicious activity.")
+                subject = f"🛑 CRITICAL FRAUD ALERT: Order #{order_id}"
+                html_body = f"<h3>Suspicious Fraud Alert</h3><p>Order <strong>#{order_id}</strong> has been cancelled and flagged as fraud.</p><p><strong>IP Address:</strong> {ip_addr}</p><p><strong>Reason:</strong> {reason}</p>"
+                send_ses_email(subject, html_body)
+                send_slack_webhook(f"🚨 *CRITICAL FRAUD BLOCKED* 🚨\nOrder #{order_id} flagged as *FRAUD* from IP `{ip_addr}`. Reason: {reason}")
+
             
         # Increment metric
         global notification_events_broadcast_total
