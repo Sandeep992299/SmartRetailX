@@ -24,6 +24,10 @@ spec:
         app: user-service
         project: smartretailx
         version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8001"
     spec:
       containers:
       - name: user-service

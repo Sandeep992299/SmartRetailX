@@ -67,6 +67,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# User Service metrics storage
+user_requests_total = {}
+user_latency_sum = 0.0
+user_latency_count = 0
+
+from fastapi import Request
+from fastapi.responses import PlainTextResponse
+
+@app.middleware("http")
+async def user_metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    global user_latency_sum, user_latency_count
+    user_latency_sum += duration
+    user_latency_count += 1
+    
+    if not request.url.path.startswith(("/users/healthz", "/metrics")):
+        key = (request.method, request.url.path, response.status_code)
+        user_requests_total[key] = user_requests_total.get(key, 0) + 1
+        
+    return response
+
 # Authentication Utilities
 def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -218,3 +242,30 @@ def healthz():
         "database": "mongodb",
         "mongodb_connected": db is not None
     }
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics():
+    global user_latency_sum, user_latency_count
+    lines = []
+    
+    # Total request counts
+    lines.append("# HELP user_requests_total Total number of HTTP requests handled by the User Service.")
+    lines.append("# TYPE user_requests_total counter")
+    for (method, path, status_code), count in user_requests_total.items():
+        lines.append(f'user_requests_total{{method="{method}",path="{path}",status="{status_code}"}} {count}')
+        
+    # Latency metric
+    lines.append("# HELP user_request_latency_seconds_sum Sum of request processing duration in seconds.")
+    lines.append("# TYPE user_request_latency_seconds_sum counter")
+    lines.append(f"user_request_latency_seconds_sum {user_latency_sum}")
+    
+    lines.append("# HELP user_request_latency_seconds_count Count of request processing durations.")
+    lines.append("# TYPE user_request_latency_seconds_count counter")
+    lines.append(f"user_request_latency_seconds_count {user_latency_count}")
+
+    # Database connectivity status
+    lines.append("# HELP user_mongodb_connected Status of MongoDB connection.")
+    lines.append("# TYPE user_mongodb_connected gauge")
+    lines.append(f"user_mongodb_connected {1 if db is not None else 0}")
+    
+    return "\n".join(lines)

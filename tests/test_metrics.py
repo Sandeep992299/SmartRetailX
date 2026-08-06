@@ -4,9 +4,11 @@ import pytest
 import importlib.util
 from unittest.mock import MagicMock
 
-# ------------------------------------------------------------
-# Zero-dependency Python Mocking wrapper
-# ------------------------------------------------------------
+# Un-mock fastapi and standard modules if they were globally mocked by other tests in the runner
+for module_name in ['fastapi', 'fastapi.responses', 'fastapi.middleware.cors', 'fastapi.middleware']:
+    if module_name in sys.modules and isinstance(sys.modules[module_name], MagicMock):
+        del sys.modules[module_name]
+
 # Mock databases & web components
 sys.modules['pymongo'] = MagicMock()
 sys.modules['redis'] = MagicMock()
@@ -22,6 +24,12 @@ sys.modules['sqlalchemy.ext.declarative'] = ext_mock
 sys.modules['sqlalchemy.orm'] = MagicMock()
 
 sys.modules['kafka'] = MagicMock()
+
+def setup_function(function):
+    """Clean up sys.modules to remove any global MagicMocks before importing or running tests."""
+    for module_name in ['fastapi', 'fastapi.responses', 'fastapi.middleware.cors', 'fastapi.middleware']:
+        if module_name in sys.modules and isinstance(sys.modules[module_name], MagicMock):
+            del sys.modules[module_name]
 
 def import_from_path(module_name, file_path):
     """Dynamically imports a python file from its exact filesystem path."""
@@ -58,3 +66,57 @@ def test_product_service_metrics():
     assert "# TYPE product_requests_total counter" in metrics_response
     assert "product_cache_hits_total" in metrics_response
     assert "product_cache_misses_total" in metrics_response
+
+def test_user_service_metrics():
+    """Verify that the User Service /metrics endpoint outputs standard Prometheus formatting."""
+    user_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "user-service", "main.py"))
+    user_main = import_from_path("user_main", user_path)
+    
+    metrics_response = user_main.prometheus_metrics()
+    assert "# HELP user_requests_total" in metrics_response
+    assert "user_mongodb_connected" in metrics_response
+
+def test_order_service_metrics():
+    """Verify that the Order Service /metrics endpoint outputs standard Prometheus formatting."""
+    order_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "order-service", "main.py"))
+    order_main = import_from_path("order_main", order_path)
+    
+    metrics_response = order_main.prometheus_metrics()
+    assert "# HELP order_requests_total" in metrics_response
+    assert "orders_created_total" in metrics_response
+    assert "order_mongodb_connected" in metrics_response
+    assert "order_kafka_connected" in metrics_response
+
+def test_payment_service_metrics():
+    """Verify that the Payment Service /metrics endpoint outputs standard Prometheus formatting."""
+    payment_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "payment-service", "main.py"))
+    payment_main = import_from_path("payment_main", payment_path)
+    
+    metrics_response = payment_main.prometheus_metrics()
+    assert "# HELP payment_requests_total" in metrics_response
+    assert "payments_processed_total" in metrics_response
+    assert "payment_circuit_breaker_state" in metrics_response
+    assert "payment_kafka_connected" in metrics_response
+
+def test_inventory_service_metrics():
+    """Verify that the Inventory Service /metrics endpoint contains cache hit/miss details."""
+    inventory_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "inventory-service", "main.py"))
+    inventory_main = import_from_path("inventory_main", inventory_path)
+    
+    metrics_response = inventory_main.prometheus_metrics()
+    assert "# HELP inventory_requests_total" in metrics_response
+    assert "inventory_cache_hits_total" in metrics_response
+    assert "inventory_cache_misses_total" in metrics_response
+    assert "inventory_redis_connected" in metrics_response
+    assert "inventory_mongodb_connected" in metrics_response
+
+def test_notification_service_metrics():
+    """Verify that the Notification Service /metrics endpoint outputs websocket connection count."""
+    notification_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "notification-service", "main.py"))
+    notification_main = import_from_path("notification_main", notification_path)
+    
+    metrics_response = notification_main.prometheus_metrics()
+    assert "# HELP notification_requests_total" in metrics_response
+    assert "notification_websockets_connected" in metrics_response
+    assert "notification_events_broadcast_total" in metrics_response
+

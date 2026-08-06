@@ -82,7 +82,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Inventory Service metrics storage
+inventory_requests_total = {}
+inventory_latency_sum = 0.0
+inventory_latency_count = 0
+inventory_cache_hits = 0
+inventory_cache_misses = 0
 
+from fastapi import Request
+from fastapi.responses import PlainTextResponse
+
+@app.middleware("http")
+async def inventory_metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    global inventory_latency_sum, inventory_latency_count
+    inventory_latency_sum += duration
+    inventory_latency_count += 1
+    
+    if not request.url.path.startswith(("/inventory/healthz", "/metrics")):
+        key = (request.method, request.url.path, response.status_code)
+        inventory_requests_total[key] = inventory_requests_total.get(key, 0) + 1
+        
+    return response
 # Seed database with starting quantities
 @app.on_event("startup")
 def seed_inventory():
@@ -319,6 +343,8 @@ def get_inventory(product_id: str):
             cached_stock = redis_client.get(f"inventory:stock:{product_id}")
             if cached_stock:
                 print(f"Inventory Cache HIT for product {product_id}")
+                global inventory_cache_hits
+                inventory_cache_hits += 1
                 if db is not None:
                     item = db.inventory.find_one({"product_id": product_id})
                     if item:
@@ -327,6 +353,8 @@ def get_inventory(product_id: str):
         except Exception as e:
             print(f"Redis cache read error: {e}")
             
+    global inventory_cache_misses
+    inventory_cache_misses += 1
     if db is None:
         raise HTTPException(status_code=503, detail="Database currently offline")
         
@@ -371,3 +399,54 @@ def healthz():
         "redis_connected": redis_client is not None and bool(redis_client.ping()),
         "mongodb_connected": db is not None
     }
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics():
+    global inventory_latency_sum, inventory_latency_count, inventory_cache_hits, inventory_cache_misses
+    lines = []
+    
+    # Total request counts
+    lines.append("# HELP inventory_requests_total Total number of HTTP requests handled by the Inventory Service.")
+    lines.append("# TYPE inventory_requests_total counter")
+    for (method, path, status_code), count in inventory_requests_total.items():
+        lines.append(f'inventory_requests_total{{method="{method}",path="{path}",status="{status_code}"}} {count}')
+        
+    # Latency metric
+    lines.append("# HELP inventory_request_latency_seconds_sum Sum of request processing duration in seconds.")
+    lines.append("# TYPE inventory_request_latency_seconds_sum counter")
+    lines.append(f"inventory_request_latency_seconds_sum {inventory_latency_sum}")
+    
+    lines.append("# HELP inventory_request_latency_seconds_count Count of request processing durations.")
+    lines.append("# TYPE inventory_request_latency_seconds_count counter")
+    lines.append(f"inventory_request_latency_seconds_count {inventory_latency_count}")
+
+    # Cache hit/miss stats
+    lines.append("# HELP inventory_cache_hits_total Total number of Redis cache hits.")
+    lines.append("# TYPE inventory_cache_hits_total counter")
+    lines.append(f"inventory_cache_hits_total {inventory_cache_hits}")
+
+    lines.append("# HELP inventory_cache_misses_total Total number of Redis cache misses.")
+    lines.append("# TYPE inventory_cache_misses_total counter")
+    lines.append(f"inventory_cache_misses_total {inventory_cache_misses}")
+
+    # Connections status
+    redis_conn = 0
+    if redis_client:
+        try:
+            if redis_client.ping():
+                redis_conn = 1
+        except Exception:
+            pass
+    lines.append("# HELP inventory_redis_connected Status of Redis cache connection.")
+    lines.append("# TYPE inventory_redis_connected gauge")
+    lines.append(f"inventory_redis_connected {redis_conn}")
+
+    lines.append("# HELP inventory_mongodb_connected Status of MongoDB connection.")
+    lines.append("# TYPE inventory_mongodb_connected gauge")
+    lines.append(f"inventory_mongodb_connected {1 if db is not None else 0}")
+
+    lines.append("# HELP inventory_kafka_connected Status of Kafka connection.")
+    lines.append("# TYPE inventory_kafka_connected gauge")
+    lines.append(f"inventory_kafka_connected {1 if kafka_producer is not None else 0}")
+    
+    return "\n".join(lines)

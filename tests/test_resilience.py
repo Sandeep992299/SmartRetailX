@@ -26,6 +26,7 @@ sys.modules['kafka'] = MagicMock()
 
 # Mock fastapi
 sys.modules['fastapi'] = MagicMock()
+sys.modules['fastapi.responses'] = MagicMock()
 sys.modules['fastapi.middleware.cors'] = MagicMock()
 
 # Add payment-service directory to python path

@@ -60,6 +60,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 # ----------------------------------------------------
 # 2. Local WebSocket & Kafka Broadcast Server (Local Compose Testing)
 # ----------------------------------------------------
+# FastAPI Initialization
 app = FastAPI(
     title="SmartRetailX Notification WebSocket Service",
     description="Local runner representing the Lambda event processor with live browser WebSocket streaming.",
@@ -73,6 +74,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Notification Service metrics storage
+notification_requests_total = {}
+notification_latency_sum = 0.0
+notification_latency_count = 0
+notification_events_broadcast_total = 0
+
+from fastapi import Request
+from fastapi.responses import PlainTextResponse
+
+@app.middleware("http")
+async def notification_metrics_middleware(request: Request, call_next):
+    # WS connections are handled by WebSocket endpoint, not http middleware logging
+    if request.scope.get("type") == "websocket" or request.url.path.startswith("/ws"):
+        return await call_next(request)
+        
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    global notification_latency_sum, notification_latency_count
+    notification_latency_sum += duration
+    notification_latency_count += 1
+    
+    if not request.url.path.startswith(("/healthz", "/metrics")):
+        key = (request.method, request.url.path, response.status_code)
+        notification_requests_total[key] = notification_requests_total.get(key, 0) + 1
+        
+    return response
 
 # Manage WebSocket connection states
 class ConnectionManager:
@@ -122,6 +152,38 @@ async def websocket_endpoint(websocket: WebSocket):
 def healthz():
     return {"status": "healthy", "websockets_connected": len(manager.active_connections)}
 
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics():
+    global notification_latency_sum, notification_latency_count, notification_events_broadcast_total
+    lines = []
+    
+    # Total request counts
+    lines.append("# HELP notification_requests_total Total number of HTTP requests handled by the Notification Service.")
+    lines.append("# TYPE notification_requests_total counter")
+    for (method, path, status_code), count in notification_requests_total.items():
+        lines.append(f'notification_requests_total{{method="{method}",path="{path}",status="{status_code}"}} {count}')
+        
+    # Latency metric
+    lines.append("# HELP notification_request_latency_seconds_sum Sum of request processing duration in seconds.")
+    lines.append("# TYPE notification_request_latency_seconds_sum counter")
+    lines.append(f"notification_request_latency_seconds_sum {notification_latency_sum}")
+    
+    lines.append("# HELP notification_request_latency_seconds_count Count of request processing durations.")
+    lines.append("# TYPE notification_request_latency_seconds_count counter")
+    lines.append(f"notification_request_latency_seconds_count {notification_latency_count}")
+
+    # WebSocket connection counts
+    lines.append("# HELP notification_websockets_connected Count of active WebSocket connections.")
+    lines.append("# TYPE notification_websockets_connected gauge")
+    lines.append(f"notification_websockets_connected {len(manager.active_connections)}")
+
+    # Notification broadcasts count
+    lines.append("# HELP notification_events_broadcast_total Total number of events broadcasted over WebSockets.")
+    lines.append("# TYPE notification_events_broadcast_total counter")
+    lines.append(f"notification_events_broadcast_total {notification_events_broadcast_total}")
+    
+    return "\n".join(lines)
+
 # Asynchronous event dispatcher loop
 async def queue_event_dispatcher():
     print("Notification dispatcher queue task started...")
@@ -129,6 +191,11 @@ async def queue_event_dispatcher():
         event = await event_queue.get()
         print(f"Broadcasting event to WebSockets: {event.get('event_type')}")
         await manager.broadcast(event)
+        
+        # Increment metric
+        global notification_events_broadcast_total
+        notification_events_broadcast_total += 1
+        
         event_queue.task_done()
 
 # Kafka broker consumer

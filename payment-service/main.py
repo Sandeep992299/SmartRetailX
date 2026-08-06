@@ -110,6 +110,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Payment Service metrics storage
+payment_requests_total = {}
+payment_latency_sum = 0.0
+payment_latency_count = 0
+payments_processed_total = {"Success": 0, "Failed": 0}
+
+from fastapi import Request
+from fastapi.responses import PlainTextResponse
+
+@app.middleware("http")
+async def payment_metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    global payment_latency_sum, payment_latency_count
+    payment_latency_sum += duration
+    payment_latency_count += 1
+    
+    if not request.url.path.startswith(("/payments/healthz", "/metrics")):
+        key = (request.method, request.url.path, response.status_code)
+        payment_requests_total[key] = payment_requests_total.get(key, 0) + 1
+        
+    return response
+
 class CircuitBreaker:
     def __init__(self, failure_threshold=3, recovery_time=10):
         self.failure_threshold = failure_threshold
@@ -173,6 +198,10 @@ def handle_dlt_dispatch(order_data: dict, reason: str):
 
 def publish_payment_failure_event(order_data: dict):
     """Publishes a payment-failed event for Saga compensating transaction."""
+    # Increment metric
+    global payments_processed_total
+    payments_processed_total["Failed"] = payments_processed_total.get("Failed", 0) + 1
+
     event_payload = {
         "event_id": f"evt_fail_{order_data['order_id']}_{int(time.time())}",
         "event_type": "payment-failed",
@@ -312,6 +341,11 @@ def process_and_persist_payment(order_data: dict):
 
 def publish_payment_event(txn: TransactionDB):
     """Publishes payment event to Kafka broker."""
+    # Increment metric
+    global payments_processed_total
+    status_label = "Success" if txn.status == "Success" else "Failed"
+    payments_processed_total[status_label] = payments_processed_total.get(status_label, 0) + 1
+
     event_payload = {
         "event_id": f"evt_{txn.transaction_uuid}",
         "event_type": "payment-settled" if txn.status == "Success" else "payment-failed",
@@ -422,3 +456,47 @@ def healthz():
         "database_url": DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else DATABASE_URL, # redact password
         "kafka_connected": kafka_producer is not None
     }
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics():
+    global payment_latency_sum, payment_latency_count, payments_processed_total
+    lines = []
+    
+    # Total request counts
+    lines.append("# HELP payment_requests_total Total number of HTTP requests handled by the Payment Service.")
+    lines.append("# TYPE payment_requests_total counter")
+    for (method, path, status_code), count in payment_requests_total.items():
+        lines.append(f'payment_requests_total{{method="{method}",path="{path}",status="{status_code}"}} {count}')
+        
+    # Latency metric
+    lines.append("# HELP payment_request_latency_seconds_sum Sum of request processing duration in seconds.")
+    lines.append("# TYPE payment_request_latency_seconds_sum counter")
+    lines.append(f"payment_request_latency_seconds_sum {payment_latency_sum}")
+    
+    lines.append("# HELP payment_request_latency_seconds_count Count of request processing durations.")
+    lines.append("# TYPE payment_request_latency_seconds_count counter")
+    lines.append(f"payment_request_latency_seconds_count {payment_latency_count}")
+
+    # Transactions processed count
+    lines.append("# HELP payments_processed_total Total number of processed payments by status.")
+    lines.append("# TYPE payments_processed_total counter")
+    for status_label, count in payments_processed_total.items():
+        lines.append(f'payments_processed_total{{status="{status_label}"}} {count}')
+
+    # Circuit breaker state
+    # 0 = CLOSED, 1 = HALF-OPEN, 2 = OPEN
+    cb_state_val = 0
+    if payment_circuit_breaker.state == "HALF-OPEN":
+        cb_state_val = 1
+    elif payment_circuit_breaker.state == "OPEN":
+        cb_state_val = 2
+    lines.append("# HELP payment_circuit_breaker_state Current state of the payment gateway circuit breaker (0=CLOSED, 1=HALF-OPEN, 2=OPEN).")
+    lines.append("# TYPE payment_circuit_breaker_state gauge")
+    lines.append(f"payment_circuit_breaker_state {cb_state_val}")
+
+    # Connections status
+    lines.append("# HELP payment_kafka_connected Status of Kafka producer connection.")
+    lines.append("# TYPE payment_kafka_connected gauge")
+    lines.append(f"payment_kafka_connected {1 if kafka_producer is not None else 0}")
+    
+    return "\n".join(lines)

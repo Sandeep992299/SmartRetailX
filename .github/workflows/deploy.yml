@@ -137,12 +137,12 @@ jobs:
 
       - name: Trigger Rolling Rollout Restarts on Microservices
         run: |
-          for service in api-gateway user-service product-service order-service payment-service inventory-service notifications frontend; do
+          for service in user-service product-service order-service payment-service inventory-service notification-service frontend; do
             kubectl rollout restart deployment/$service -n smartretailx
           done
 
       - name: Verify Deployment Rollouts
         run: |
-          for service in api-gateway user-service product-service order-service payment-service inventory-service notifications frontend; do
+          for service in user-service product-service order-service payment-service inventory-service notification-service frontend; do
             kubectl rollout status deployment/$service -n smartretailx --timeout=120s
           done
