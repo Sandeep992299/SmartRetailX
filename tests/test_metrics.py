@@ -120,3 +120,31 @@ def test_notification_service_metrics():
     assert "notification_websockets_connected" in metrics_response
     assert "notification_events_broadcast_total" in metrics_response
 
+def test_notification_service_ses_trigger(monkeypatch):
+    """Verify that send_ses_email triggers boto3 SES send_email when AWS credentials exist."""
+    notification_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "notification-service", "main.py"))
+    notification_main = import_from_path("notification_main", notification_path)
+    
+    # Mock boto3.client
+    mock_boto3_client = MagicMock()
+    mock_client_instance = MagicMock()
+    mock_boto3_client.return_value = mock_client_instance
+    monkeypatch.setattr("boto3.client", mock_boto3_client)
+    
+    # Set mock environment variables to bypass AWS credential skip logic
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "mock_key")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("SES_SENDER_EMAIL", "sender@example.com")
+    monkeypatch.setenv("SES_RECIPIENT_EMAIL", "recipient@example.com")
+    
+    # Call the email sending helper
+    notification_main.send_ses_email(
+        subject="Test Low Stock",
+        html_body="<p>Stock is low</p>"
+    )
+    
+    # Verify boto3 client was initialized for 'ses' and send_email was invoked
+    mock_boto3_client.assert_called_once_with('ses', region_name='us-east-1')
+    mock_client_instance.send_email.assert_called_once()
+
+

@@ -7,6 +7,46 @@ from typing import List, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from kafka import KafkaConsumer
+import boto3
+from botocore.exceptions import ClientError
+
+def send_ses_email(subject: str, html_body: str, recipient: str = None):
+    """Sends a notification email via AWS SES if credentials and verified identities exist."""
+    AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+    sender = os.getenv("SES_SENDER_EMAIL", "alerts@smartretailx.com")
+    if not recipient:
+        recipient = os.getenv("SES_RECIPIENT_EMAIL", "admin@smartretailx.com")
+        
+    print(f"SES: Attempting to send email from '{sender}' to '{recipient}' (Subject: {subject})")
+    
+    # Allow bypassing/mocking in non-AWS/local runs to avoid crashing on missing AWS creds
+    if os.getenv("AWS_ACCESS_KEY_ID") is None and os.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") is None:
+        print("SES: AWS credentials not found. Bypassing SES call (simulation fallback).")
+        return
+        
+    try:
+        client = boto3.client('ses', region_name=AWS_REGION)
+        response = client.send_email(
+            Destination={'ToAddresses': [recipient]},
+            Message={
+                'Body': {
+                    'Html': {
+                        'Charset': "UTF-8",
+                        'Data': html_body,
+                    },
+                },
+                'Subject': {
+                    'Charset': "UTF-8",
+                    'Data': subject,
+                },
+            },
+            Source=sender,
+        )
+        print(f"SES: Email successfully sent! Message ID: {response['MessageId']}")
+    except ClientError as e:
+        print(f"SES: ClientError sending email: {e.response['Error']['Message']}")
+    except Exception as e:
+        print(f"SES: Unexpected error sending email: {e}")
 
 # ----------------------------------------------------
 # 1. AWS Lambda Handler Entrypoint (Task 4 Event-Driven Lambda)
@@ -36,7 +76,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             elif event_type == "payment-failed":
                 print(f"ALERT: Payment failure for Order #{event_data.get('order_id')}")
             elif event_type == "low-stock-alert":
-                print(f"ALERT: Product '{event_data.get('product_name')}' stock count is low ({event_data.get('stock_count')})!")
+                product_name = event_data.get('product_name', 'Unknown Product')
+                product_id = event_data.get('product_id', 'N/A')
+                stock_count = event_data.get('stock_count', 0)
+                print(f"ALERT: Product '{product_name}' stock count is low ({stock_count})!")
+                
+                # Dispatch SES Email Notification
+                subject = f"ALERT: Low Stock for Product '{product_name}'"
+                html_body = f"<h3>SmartRetailX Inventory Alert</h3><p>The stock level for product <strong>{product_name}</strong> (ID: {product_id}) has fallen below the threshold.</p><p><strong>Current Stock count:</strong> {stock_count}</p><p>Please restock immediately.</p>"
+                send_ses_email(subject, html_body)
                 
             notifications_sent += 1
         except Exception as e:
@@ -192,6 +240,17 @@ async def queue_event_dispatcher():
         print(f"Broadcasting event to WebSockets: {event.get('event_type')}")
         await manager.broadcast(event)
         
+        # Trigger SES email on low-stock events
+        event_type = event.get("event_type")
+        if event_type == "low-stock-alert":
+            event_data = event.get("data", {})
+            product_name = event_data.get("product_name", "Unknown Product")
+            product_id = event_data.get("product_id", "N/A")
+            stock_count = event_data.get("stock_count", 0)
+            subject = f"ALERT: Low Stock for Product '{product_name}'"
+            html_body = f"<h3>SmartRetailX Inventory Alert</h3><p>The stock level for product <strong>{product_name}</strong> (ID: {product_id}) has fallen below the threshold.</p><p><strong>Current Stock count:</strong> {stock_count}</p><p>Please restock immediately.</p>"
+            send_ses_email(subject, html_body)
+            
         # Increment metric
         global notification_events_broadcast_total
         notification_events_broadcast_total += 1

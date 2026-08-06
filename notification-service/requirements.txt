@@ -2,3 +2,5 @@ fastapi==0.104.1
 uvicorn==0.24.0.post1
 kafka-python==2.0.2
 websockets==12.0
+boto3==1.28.0
+
