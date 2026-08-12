@@ -31,24 +31,24 @@ resource "aws_route53_health_check" "primary_region" {
 }
 
 # Primary DNS Record (Active) routing to CloudFront distribution
-resource "aws_route53_record" "primary_cdn" {
-  zone_id = aws_route53_zone.primary.zone_id
-  name    = "app.smartretailx.internal"
-  type    = "A"
-
-  alias {
-    name                   = module.cloudfront.cloudfront_domain_name
-    zone_id                = module.cloudfront.cloudfront_hosted_zone_id
-    evaluate_target_health = true
-  }
-
-  set_identifier = "primary-london"
-  failover_routing_policy {
-    type = "PRIMARY"
-  }
-
-  health_check_id = aws_route53_health_check.primary_region.id
-}
+# resource "aws_route53_record" "primary_cdn" {
+#   zone_id = aws_route53_zone.primary.zone_id
+#   name    = "app.smartretailx.internal"
+#   type    = "A"
+# 
+#   alias {
+#     name                   = module.cloudfront.cloudfront_domain_name
+#     zone_id                = module.cloudfront.cloudfront_hosted_zone_id
+#     evaluate_target_health = true
+#   }
+# 
+#   set_identifier = "primary-london"
+#   failover_routing_policy {
+#     type = "PRIMARY"
+#   }
+# 
+#   health_check_id = aws_route53_health_check.primary_region.id
+# }
 
 # Standby DNS Record (Passive) routing to secondary/failover region ALB
 resource "aws_route53_record" "secondary_cdn" {

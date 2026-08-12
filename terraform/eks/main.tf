@@ -143,7 +143,6 @@ resource "aws_eks_access_entry" "console" {
   for_each          = toset(var.console_iam_arns)
   cluster_name      = aws_eks_cluster.main.name
   principal_arn     = each.value
-  kubernetes_groups = ["system:masters"]
 }
 
 resource "aws_eks_access_policy_association" "console_admin" {

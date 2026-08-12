@@ -116,13 +116,13 @@ module "apigateway" {
 }
 
 # 11. CloudFront Module (CDN distribution for EKS Ingress)
-module "cloudfront" {
-  source                = "./cloudfront"
-  environment           = var.environment
-  project_name          = var.project_name
-  eks_ingress_dns       = var.eks_ingress_dns
-  s3_bucket_domain_name = module.s3.bucket_regional_domain_name
-}
+# module "cloudfront" {
+#   source                = "./cloudfront"
+#   environment           = var.environment
+#   project_name          = var.project_name
+#   eks_ingress_dns       = var.eks_ingress_dns
+#   s3_bucket_domain_name = module.s3.bucket_regional_domain_name
+# }
 
 # 12. Helm Provider Configuration & Prometheus/Grafana Release
 provider "helm" {
@@ -130,7 +130,7 @@ provider "helm" {
     host                   = module.eks.cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
     exec {
-      api_version = "client.authentication.k8s.aws/v1beta1"
+      api_version = "client.authentication.k8s.io/v1beta1"
       args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
       command     = "aws"
     }

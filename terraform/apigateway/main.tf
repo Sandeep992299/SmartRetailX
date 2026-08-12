@@ -3,7 +3,7 @@
 # ============================================================
 
 locals {
-  nlb_host = "placeholder.internal" # Replace with NLB DNS after load balancer limit raised
+  nlb_host = "example.com" # Replace with NLB DNS after load balancer limit raised
   
   # Service base URIs on EKS NodePorts
   user_base      = "http://${local.nlb_host}:30081"
@@ -476,6 +476,10 @@ resource "aws_apigatewayv2_stage" "v1" {
   name        = "v1"
   auto_deploy = true
   description = "SmartRetailX v1 — production stage with per-service throttling and CloudWatch access logging."
+
+  depends_on = [
+    aws_apigatewayv2_route.payment_transactions
+  ]
 
   default_route_settings {
     throttling_burst_limit   = 500

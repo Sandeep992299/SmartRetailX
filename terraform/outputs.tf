@@ -46,5 +46,5 @@ output "api_gateway_endpoint" {
 
 output "cloudfront_domain_name" {
   description = "The public domain URL of the CloudFront CDN distribution"
-  value       = module.cloudfront.cloudfront_domain_name
+  value       = "cloudfront-disabled-unverified-account"
 }
