@@ -219,6 +219,14 @@ def get_orders(
         
     return [format_order_doc(o) for o in orders_cursor]
 
+@app.get("/orders/healthz")
+def healthz():
+    return {
+        "status": "healthy",
+        "kafka_connected": kafka_producer is not None,
+        "mongodb_connected": db is not None
+    }
+
 @app.get("/orders/{order_id}", response_model=OrderResponse)
 def get_order(
     order_id: str,
@@ -277,14 +285,6 @@ def update_order_status(
     # Publish event
     publish_order_event("order-status-changed", formatted)
     return formatted
-
-@app.get("/orders/healthz")
-def healthz():
-    return {
-        "status": "healthy",
-        "kafka_connected": kafka_producer is not None,
-        "mongodb_connected": db is not None
-    }
 
 @app.get("/metrics", response_class=PlainTextResponse)
 def prometheus_metrics():

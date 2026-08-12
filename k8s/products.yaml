@@ -21,7 +21,8 @@ spec:
     spec:
       containers:
       - name: product-service
-        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-product-service:v1.0.0
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-product-service:v1.0.1
+        imagePullPolicy: Always
         ports:
         - containerPort: 8002
         resources:

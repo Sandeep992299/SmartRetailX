@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
-const GATEWAY_URL = `http://${window.location.hostname}:8000/api/v1`;
-const WEBSOCKET_URL = `ws://${window.location.hostname}:8006/ws`;
+const GATEWAY_URL = `http://adef77e62998148bf97f8564f1fe7123-1693663817.us-east-1.elb.amazonaws.com:8000/api/v1`;
+
+const WEBSOCKET_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? `ws://${window.location.hostname}:8006/ws` 
+  : `ws://${window.location.hostname}/ws`;
 
 const resolveProductImage = (url, name) => {
   if (url && url.startsWith('https://smartretailx-public-assets.s3.amazonaws.com/products/')) {
@@ -365,15 +368,15 @@ function App() {
 
   const probeHealth = async () => {
     try {
-      const res = await fetch(`http://${window.location.hostname}:8000/healthz`);
+      const res = await fetch(`${GATEWAY_URL}/users/healthz`);
       const data = await res.json();
       setServiceHealth(prev => ({ ...prev, gateway: data.status === 'healthy' }));
       
-      probeServiceHealth('users', 8001);
-      probeServiceHealth('products', 8002);
-      probeServiceHealth('orders', 8003);
-      probeServiceHealth('payments', 8004);
-      probeServiceHealth('inventory', 8005);
+      probeServiceHealth('users');
+      probeServiceHealth('products');
+      probeServiceHealth('orders');
+      probeServiceHealth('payments');
+      probeServiceHealth('inventory');
     } catch (e) {
       setServiceHealth(prev => ({
         gateway: false, users: false, products: false, orders: false, payments: false, inventory: false
@@ -381,9 +384,9 @@ function App() {
     }
   };
 
-  const probeServiceHealth = async (name, port) => {
+  const probeServiceHealth = async (name) => {
     try {
-      const res = await fetch(`http://${window.location.hostname}:${port}/${name}/healthz`);
+      const res = await fetch(`${GATEWAY_URL}/${name}/healthz`);
       setServiceHealth(prev => ({ ...prev, [name]: res.ok }));
     } catch (e) {
       setServiceHealth(prev => ({ ...prev, [name]: false }));
@@ -455,7 +458,7 @@ function App() {
     setAuthError('');
     try {
       if (isSignUp) {
-        await fetch(`http://${window.location.hostname}:8001/users/signup`, {
+        await fetch(`${GATEWAY_URL}/users/signup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -469,7 +472,7 @@ function App() {
         setIsSignUp(false);
         setAuthPassword('');
       } else {
-        const res = await fetch(`http://${window.location.hostname}:8001/users/login`, {
+        const res = await fetch(`${GATEWAY_URL}/users/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -950,50 +953,53 @@ function App() {
           {activeTab === 'shop' && (
             <>
               {/* E-Commerce Promotional Banner Carousel */}
-              <div className="promo-banner" style={{position: 'relative', overflow: 'hidden', padding: '30px 40px', background: 'linear-gradient(135deg, #ff5000 0%, #ff8c00 100%)', borderRadius: '16px', color: 'white', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
+              <div style={{position: 'relative', borderRadius: '20px', overflow: 'hidden', minHeight: '200px', cursor: 'pointer'}} onClick={() => setActiveBanner((activeBanner + 1) % 3)}>
+                {/* Banner 0 - Summer Tech Carnival */}
                 {activeBanner === 0 && (
-                  <div className="banner-slide fade-in">
-                    <div style={{fontSize: '11px', textTransform: 'uppercase', letterSpacing: '2px', opacity: 0.8, fontWeight: '700'}}>🔥 Summer Tech Carnival</div>
-                    <div className="promo-title" style={{fontSize: '28px', marginTop: '6px'}}>Get up to 50% discount!</div>
-                    <div className="promo-desc" style={{opacity: 0.95, fontSize: '13px', marginTop: '4px'}}>
-                      Save big on smart noise-canceling headphones, customizable mechanical keyboards, and premium outdoor accessories. Free global shipping!
+                  <div className="banner-slide fade-in" style={{position: 'relative', width: '100%', minHeight: '200px', display: 'flex', alignItems: 'center', background: 'linear-gradient(120deg, #0f0c29, #302b63, #24243e)', overflow: 'hidden', borderRadius: '20px'}}>
+                    <img src="/images/banners/summer-tech.png" alt="Summer Tech Carnival" style={{position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55}} />
+                    <div style={{position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(10,8,30,0.92) 38%, rgba(10,8,30,0.1) 100%)'}} />
+                    <div style={{position: 'relative', zIndex: 2, padding: '32px 44px', color: 'white', maxWidth: '60%'}}>
+                      <div style={{display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,80,0,0.25)', border: '1px solid rgba(255,80,0,0.5)', borderRadius: '20px', padding: '4px 12px', fontSize: '11px', fontWeight: '800', letterSpacing: '2px', textTransform: 'uppercase', color: '#ff8c42', marginBottom: '12px'}}>🔥 Summer Tech Carnival</div>
+                      <div style={{fontSize: '34px', fontWeight: '900', lineHeight: 1.1, marginBottom: '10px', textShadow: '0 2px 20px rgba(0,0,0,0.5)'}}>Get up to <span style={{background: 'linear-gradient(90deg,#ff5000,#ff8c00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'}}>50% OFF</span></div>
+                      <div style={{fontSize: '14px', opacity: 0.85, lineHeight: 1.6, marginBottom: '18px'}}>Save big on noise-canceling headphones, mechanical keyboards &amp; premium outdoor accessories. <strong style={{color: '#ff8c42'}}>Free global shipping!</strong></div>
+                      <div style={{display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(90deg,#ff5000,#ff8c00)', padding: '10px 22px', borderRadius: '30px', fontSize: '13px', fontWeight: '700', boxShadow: '0 4px 24px rgba(255,80,0,0.4)'}}>Shop Now →</div>
                     </div>
+                    <div style={{position: 'absolute', top: '16px', right: '20px', background: 'rgba(255,80,0,0.9)', color: 'white', fontWeight: '900', fontSize: '18px', padding: '8px 16px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(255,80,0,0.5)', letterSpacing: '-0.5px'}}>-50%</div>
                   </div>
                 )}
+                {/* Banner 1 - Loyalty Points */}
                 {activeBanner === 1 && (
-                  <div className="banner-slide fade-in">
-                    <div style={{fontSize: '11px', textTransform: 'uppercase', letterSpacing: '2px', opacity: 0.8, fontWeight: '700'}}>✨ Loyalty Points Program</div>
-                    <div className="promo-title" style={{fontSize: '28px', marginTop: '6px'}}>Double Points Week!</div>
-                    <div className="promo-desc" style={{opacity: 0.95, fontSize: '13px', marginTop: '4px'}}>
-                      Earn 2 loyalty points for every $1 spent on apparel and lifestyle items. Log in to check your account point totals and redeem vouchers!
+                  <div className="banner-slide fade-in" style={{position: 'relative', width: '100%', minHeight: '200px', display: 'flex', alignItems: 'center', background: 'linear-gradient(120deg, #1a0533, #2d1165, #13002b)', overflow: 'hidden', borderRadius: '20px'}}>
+                    <img src="/images/banners/loyalty.png" alt="Double Points Week" style={{position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5}} />
+                    <div style={{position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(26,5,51,0.92) 38%, rgba(26,5,51,0.1) 100%)'}} />
+                    <div style={{position: 'relative', zIndex: 2, padding: '32px 44px', color: 'white', maxWidth: '60%'}}>
+                      <div style={{display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(180,130,255,0.2)', border: '1px solid rgba(180,130,255,0.5)', borderRadius: '20px', padding: '4px 12px', fontSize: '11px', fontWeight: '800', letterSpacing: '2px', textTransform: 'uppercase', color: '#c084fc', marginBottom: '12px'}}>✨ Loyalty Rewards</div>
+                      <div style={{fontSize: '34px', fontWeight: '900', lineHeight: 1.1, marginBottom: '10px', textShadow: '0 2px 20px rgba(0,0,0,0.5)'}}>Double <span style={{background: 'linear-gradient(90deg,#a855f7,#f59e0b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'}}>Points Week!</span></div>
+                      <div style={{fontSize: '14px', opacity: 0.85, lineHeight: 1.6, marginBottom: '18px'}}>Earn 2× loyalty points on every purchase this week. <strong style={{color: '#c084fc'}}>Redeem for exclusive vouchers!</strong></div>
+                      <div style={{display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(90deg,#7c3aed,#a855f7)', padding: '10px 22px', borderRadius: '30px', fontSize: '13px', fontWeight: '700', boxShadow: '0 4px 24px rgba(124,58,237,0.5)'}}>View Rewards →</div>
                     </div>
+                    <div style={{position: 'absolute', top: '16px', right: '20px', background: 'linear-gradient(135deg,#7c3aed,#f59e0b)', color: 'white', fontWeight: '900', fontSize: '18px', padding: '8px 16px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(124,58,237,0.5)', letterSpacing: '-0.5px'}}>2× PTS</div>
                   </div>
                 )}
+                {/* Banner 2 - Free Shipping */}
                 {activeBanner === 2 && (
-                  <div className="banner-slide fade-in">
-                    <div style={{fontSize: '11px', textTransform: 'uppercase', letterSpacing: '2px', opacity: 0.8, fontWeight: '700'}}>🎁 Member Exclusives</div>
-                    <div className="promo-title" style={{fontSize: '28px', marginTop: '6px'}}>Free Shipping Vouchers</div>
-                    <div className="promo-desc" style={{opacity: 0.95, fontSize: '13px', marginTop: '4px'}}>
-                      Redeem shipping coupons for just 100 points. Check out the reward redemption table inside your profile portal.
+                  <div className="banner-slide fade-in" style={{position: 'relative', width: '100%', minHeight: '200px', display: 'flex', alignItems: 'center', background: 'linear-gradient(120deg, #003322, #005533, #001a11)', overflow: 'hidden', borderRadius: '20px'}}>
+                    <img src="/images/banners/shipping.png" alt="Free Shipping" style={{position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5}} />
+                    <div style={{position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(0,30,20,0.92) 38%, rgba(0,30,20,0.1) 100%)'}} />
+                    <div style={{position: 'relative', zIndex: 2, padding: '32px 44px', color: 'white', maxWidth: '60%'}}>
+                      <div style={{display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '20px', padding: '4px 12px', fontSize: '11px', fontWeight: '800', letterSpacing: '2px', textTransform: 'uppercase', color: '#34d399', marginBottom: '12px'}}>🎁 Member Exclusives</div>
+                      <div style={{fontSize: '34px', fontWeight: '900', lineHeight: 1.1, marginBottom: '10px', textShadow: '0 2px 20px rgba(0,0,0,0.5)'}}>Free <span style={{background: 'linear-gradient(90deg,#10b981,#34d399)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'}}>Shipping</span> Vouchers</div>
+                      <div style={{fontSize: '14px', opacity: 0.85, lineHeight: 1.6, marginBottom: '18px'}}>Redeem shipping coupons for just <strong style={{color: '#34d399'}}>100 loyalty points.</strong> Available exclusively for members!</div>
+                      <div style={{display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(90deg,#059669,#10b981)', padding: '10px 22px', borderRadius: '30px', fontSize: '13px', fontWeight: '700', boxShadow: '0 4px 24px rgba(16,185,129,0.4)'}}>Redeem Now →</div>
                     </div>
+                    <div style={{position: 'absolute', top: '16px', right: '20px', background: 'linear-gradient(135deg,#059669,#34d399)', color: 'white', fontWeight: '900', fontSize: '18px', padding: '8px 16px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(16,185,129,0.5)', letterSpacing: '-0.5px'}}>FREE</div>
                   </div>
                 )}
-
-                {/* Dots indicators */}
-                <div style={{position: 'absolute', bottom: '15px', right: '20px', display: 'flex', gap: '6px'}}>
+                {/* Dot indicators */}
+                <div style={{position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '7px', zIndex: 10}}>
                   {[0, 1, 2].map(idx => (
-                    <span 
-                      key={idx} 
-                      onClick={() => setActiveBanner(idx)}
-                      style={{
-                        width: '8px', 
-                        height: '8px', 
-                        borderRadius: '50%', 
-                        backgroundColor: activeBanner === idx ? 'white' : 'rgba(255,255,255,0.4)', 
-                        cursor: 'pointer',
-                        transition: 'var(--transition-smooth)'
-                      }}
-                    />
+                    <span key={idx} onClick={e => { e.stopPropagation(); setActiveBanner(idx); }} style={{width: activeBanner === idx ? '22px' : '7px', height: '7px', borderRadius: '4px', backgroundColor: activeBanner === idx ? 'white' : 'rgba(255,255,255,0.4)', cursor: 'pointer', transition: 'all 0.3s ease', display: 'block'}} />
                   ))}
                 </div>
               </div>
@@ -2010,110 +2016,151 @@ function App() {
          Modal Screen: Credit Card payment form details
          ---------------------------------------------------- */}
       {showPaymentForm && (
-        <div className="modal-overlay" onClick={() => setShowPaymentForm(false)}>
-          <div className="product-detail-modal" style={{maxWidth: '500px', padding: '24px'}} onClick={e => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setShowPaymentForm(false)}>✕</button>
-            <h2 style={{marginBottom: '16px', textAlign: 'center'}}>Secure Checkout</h2>
+        <div className="modal-overlay" onClick={() => setShowPaymentForm(false)} style={{backdropFilter: 'blur(16px)', background: 'rgba(0,0,0,0.75)'}}>
+          <div onClick={e => e.stopPropagation()} style={{background: 'linear-gradient(160deg, #0f0c29 0%, #1a1040 50%, #0d1b2a 100%)', borderRadius: '28px', maxWidth: '480px', width: '90%', padding: '0', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08)', position: 'relative'}}>
+            {/* Glowing top bar */}
+            <div style={{height: '4px', background: 'linear-gradient(90deg, #7c3aed, #06b6d4, #10b981)', width: '100%'}} />
             
-            {/* Interactive Premium Virtual Credit Card */}
-            <div className={`interactive-card-wrapper ${isCardFlipped ? 'flipped' : ''}`}>
-              <div className="interactive-card-inner">
-                {/* Front Side */}
-                <div className="interactive-card-front">
-                  <div className="card-top-row">
-                    <div className="card-chip-icon"></div>
-                    <div className="card-network-logo">
-                      {cardNumber.startsWith('4') ? 'Visa' : cardNumber.startsWith('5') ? 'Mastercard' : 'Express'}
-                    </div>
-                  </div>
-                  <div className="card-number-view">
-                    {cardNumber || '•••• •••• •••• ••••'}
-                  </div>
-                  <div className="card-bottom-row">
-                    <div className="card-holder-view">
-                      <span>CARDHOLDER</span>
-                      <div>{cardName.toUpperCase() || 'JOHN DOE'}</div>
-                    </div>
-                    <div className="card-expiry-view">
-                      <span>EXPIRES</span>
-                      <div>{cardExpiry || 'MM/YY'}</div>
-                    </div>
+            {/* Header */}
+            <div style={{padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+              <div>
+                <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                  <div style={{width: '36px', height: '36px', background: 'linear-gradient(135deg,#7c3aed,#06b6d4)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px'}}>🔒</div>
+                  <div>
+                    <div style={{color: 'white', fontWeight: '800', fontSize: '20px', lineHeight: 1}}>Secure Checkout</div>
+                    <div style={{color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '3px'}}>256-bit SSL encrypted · PCI DSS compliant</div>
                   </div>
                 </div>
+              </div>
+              <button onClick={() => setShowPaymentForm(false)} style={{background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', width: '34px', height: '34px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s'}}>✕</button>
+            </div>
 
-                {/* Back Side */}
-                <div className="interactive-card-back">
-                  <div className="card-mag-strip"></div>
-                  <div className="card-sig-bar">
-                    <div className="card-cvv-view">{cardCvv || '•••'}</div>
+            {/* Interactive Premium Virtual Credit Card */}
+            <div style={{padding: '20px 28px 0'}}>
+              <div className={`interactive-card-wrapper ${isCardFlipped ? 'flipped' : ''}`} style={{marginBottom: '4px'}}>
+                <div className="interactive-card-inner">
+                  <div className="interactive-card-front" style={{background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4c1d95 100%)', boxShadow: '0 20px 60px rgba(124,58,237,0.4)'}}>
+                    <div className="card-top-row">
+                      <div className="card-chip-icon"></div>
+                      <div className="card-network-logo" style={{fontSize: '16px', fontWeight: '900', letterSpacing: '-0.5px'}}>
+                        {cardNumber.startsWith('4') ? '𝗩𝗜𝗦𝗔' : cardNumber.startsWith('5') ? '𝗠𝗖' : 'EXPRESS'}
+                      </div>
+                    </div>
+                    <div className="card-number-view" style={{letterSpacing: '3px', fontSize: '19px'}}>{cardNumber || '•••• •••• •••• ••••'}</div>
+                    <div className="card-bottom-row">
+                      <div className="card-holder-view">
+                        <span style={{fontSize: '9px', opacity: 0.6, letterSpacing: '1.5px'}}>CARDHOLDER</span>
+                        <div style={{fontWeight: '700', fontSize: '13px'}}>{cardName.toUpperCase() || 'YOUR NAME'}</div>
+                      </div>
+                      <div className="card-expiry-view">
+                        <span style={{fontSize: '9px', opacity: 0.6, letterSpacing: '1.5px'}}>EXPIRES</span>
+                        <div style={{fontWeight: '700', fontSize: '13px'}}>{cardExpiry || 'MM/YY'}</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="card-back-brand">SmartRetailX Secure</div>
+                  <div className="interactive-card-back" style={{background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)'}}>
+                    <div className="card-mag-strip"></div>
+                    <div className="card-sig-bar">
+                      <div className="card-cvv-view" style={{fontWeight: '800'}}>{cardCvv || '•••'}</div>
+                    </div>
+                    <div className="card-back-brand" style={{color: 'rgba(255,255,255,0.5)', fontSize: '10px'}}>SmartRetailX · 256-bit Secure</div>
+                  </div>
                 </div>
               </div>
             </div>
 
+            {/* Order Summary Strip */}
+            <div style={{margin: '16px 28px 0', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <div style={{color: 'rgba(255,255,255,0.6)', fontSize: '13px'}}>Order Total</div>
+              <div style={{color: 'white', fontWeight: '900', fontSize: '20px', background: 'linear-gradient(90deg,#a78bfa,#06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'}}>
+                ${cart.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}
+              </div>
+            </div>
+
             {paymentErrors && (
-              <div style={{backgroundColor: '#ffebe9', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px', fontWeight: '700'}}>
+              <div style={{margin: '12px 28px 0', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px'}}>
                 ❌ {paymentErrors}
               </div>
             )}
 
-            <form onSubmit={checkoutCart} style={{display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px'}}>
-              <div className="form-group">
-                <label>Cardholder Name</label>
-                <input 
-                  type="text" 
-                  placeholder="John Doe" 
-                  className="form-input" 
-                  value={cardName} 
-                  onChange={e => setCardName(e.target.value)} 
-                  required 
+            <form onSubmit={checkoutCart} style={{padding: '16px 28px 28px', display: 'flex', flexDirection: 'column', gap: '14px'}}>
+              <div>
+                <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '6px'}}>Cardholder Name</label>
+                <input
+                  type="text"
+                  placeholder="John Doe"
+                  value={cardName}
+                  onChange={e => setCardName(e.target.value)}
+                  required
+                  style={{width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '15px', outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box'}}
+                  onFocus={e => e.target.style.border='1px solid rgba(124,58,237,0.7)'}
+                  onBlur={e => e.target.style.border='1px solid rgba(255,255,255,0.12)'}
                 />
               </div>
-              <div className="form-group">
-                <label>Credit Card Number</label>
-                <input 
-                  type="text" 
-                  placeholder="4111 2222 3333 4444" 
-                  className="form-input" 
-                  value={cardNumber} 
-                  onChange={handleCardNumberChange} 
-                  required 
+              <div>
+                <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '6px'}}>Card Number</label>
+                <input
+                  type="text"
+                  placeholder="4111 2222 3333 4444"
+                  value={cardNumber}
+                  onChange={handleCardNumberChange}
+                  required
+                  style={{width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '15px', outline: 'none', transition: 'border 0.2s', letterSpacing: '2px', boxSizing: 'border-box'}}
+                  onFocus={e => e.target.style.border='1px solid rgba(124,58,237,0.7)'}
+                  onBlur={e => e.target.style.border='1px solid rgba(255,255,255,0.12)'}
                 />
               </div>
               <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'}}>
-                <div className="form-group">
-                  <label>Expiry Date</label>
-                  <input 
-                    type="text" 
-                    placeholder="MM/YY" 
-                    className="form-input" 
-                    value={cardExpiry} 
-                    onChange={handleExpiryChange} 
-                    required 
+                <div>
+                  <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '6px'}}>Expiry Date</label>
+                  <input
+                    type="text"
+                    placeholder="MM/YY"
+                    value={cardExpiry}
+                    onChange={handleExpiryChange}
+                    required
+                    style={{width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '15px', outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box'}}
+                    onFocus={e => e.target.style.border='1px solid rgba(124,58,237,0.7)'}
+                    onBlur={e => e.target.style.border='1px solid rgba(255,255,255,0.12)'}
                   />
                 </div>
-                <div className="form-group">
-                  <label>Security Code (CVV)</label>
-                  <input 
-                    type="password" 
-                    placeholder="***" 
-                    className="form-input" 
-                    value={cardCvv} 
-                    onChange={handleCvvChange} 
-                    onFocus={() => setIsCardFlipped(true)}
-                    onBlur={() => setIsCardFlipped(false)}
-                    required 
+                <div>
+                  <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '6px'}}>CVV Code</label>
+                  <input
+                    type="password"
+                    placeholder="•••"
+                    value={cardCvv}
+                    onChange={handleCvvChange}
+                    onFocus={e => { setIsCardFlipped(true); e.target.style.border='1px solid rgba(124,58,237,0.7)'; }}
+                    onBlur={e => { setIsCardFlipped(false); e.target.style.border='1px solid rgba(255,255,255,0.12)'; }}
+                    required
+                    style={{width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', padding: '12px 16px', color: 'white', fontSize: '15px', outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box'}}
                   />
                 </div>
               </div>
-              <div style={{marginTop: '16px', display: 'flex', gap: '12px'}}>
-                <button type="submit" className="btn-primary" style={{flex: 1}}>
-                  Confirm Payment (${cart.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)})
+
+              {/* Accepted cards row */}
+              <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-4px'}}>
+                <div style={{color: 'rgba(255,255,255,0.35)', fontSize: '11px'}}>Accepted:</div>
+                {['VISA', 'MC', 'AMEX', 'DISC'].map(n => (
+                  <div key={n} style={{background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '3px 8px', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '800'}}>{n}</div>
+                ))}
+              </div>
+
+              <div style={{display: 'flex', gap: '12px', marginTop: '4px'}}>
+                <button
+                  type="submit"
+                  style={{flex: 1, background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', border: 'none', borderRadius: '14px', padding: '15px', color: 'white', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 8px 32px rgba(124,58,237,0.5)', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}
+                  onMouseEnter={e => e.target.style.transform='translateY(-2px)'}
+                  onMouseLeave={e => e.target.style.transform='translateY(0)'}
+                >
+                  🔒 Pay ${cart.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}
                 </button>
-                <button type="button" className="btn-secondary" onClick={() => setShowPaymentForm(false)}>
-                  Cancel
-                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentForm(false)}
+                  style={{background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '14px', padding: '15px 20px', color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'}}
+                >Cancel</button>
               </div>
             </form>
           </div>

@@ -335,6 +335,14 @@ def get_all_inventory():
     cursor = db.inventory.find()
     return [format_inventory_doc(i) for i in cursor]
 
+@app.get("/inventory/healthz")
+def healthz():
+    return {
+        "status": "healthy",
+        "redis_connected": redis_client is not None and bool(redis_client.ping()),
+        "mongodb_connected": db is not None
+    }
+
 @app.get("/inventory/{product_id}", response_model=InventoryResponse)
 def get_inventory(product_id: str):
     # Try fetching stock level from Redis first
@@ -391,14 +399,6 @@ def update_stock(
     publish_inventory_event("inventory-restocked", product_id, updated_item["product_name"], update.stock_count)
     
     return format_inventory_doc(updated_item)
-
-@app.get("/inventory/healthz")
-def healthz():
-    return {
-        "status": "healthy",
-        "redis_connected": redis_client is not None and bool(redis_client.ping()),
-        "mongodb_connected": db is not None
-    }
 
 @app.get("/metrics", response_class=PlainTextResponse)
 def prometheus_metrics():

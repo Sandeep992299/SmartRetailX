@@ -18,6 +18,7 @@ spec:
       containers:
       - name: frontend
         image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-frontend:v1.0.0
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         resources:
@@ -39,4 +40,4 @@ spec:
     targetPort: 80
   selector:
     app: frontend
-  type: ClusterIP
+  type: LoadBalancer

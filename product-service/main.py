@@ -212,6 +212,14 @@ def get_recommendations(cart_product_ids: Optional[str] = None):
                     
     return recommended[:3]
 
+@app.get("/products/healthz")
+def healthz():
+    return {
+        "status": "healthy",
+        "redis_connected": redis_client is not None and bool(redis_client.ping()),
+        "mongodb_connected": db is not None
+    }
+
 @app.get("/products/{product_id}", response_model=ProductResponse)
 def get_product(product_id: str, response: Response):
     global product_cache_hits, product_cache_misses
@@ -348,14 +356,6 @@ def delete_product(
             print(f"Redis cache invalidation error: {e}")
             
     return {"detail": "Product deleted successfully"}
-
-@app.get("/products/healthz")
-def healthz():
-    return {
-        "status": "healthy",
-        "redis_connected": redis_client is not None and bool(redis_client.ping()),
-        "mongodb_connected": db is not None
-    }
 
 from fastapi.responses import PlainTextResponse
 

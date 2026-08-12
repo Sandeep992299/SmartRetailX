@@ -3,7 +3,7 @@
 # ============================================================
 
 locals {
-  nlb_host = "example.com" # Replace with NLB DNS after load balancer limit raised
+  nlb_host = "10.0.11.208" # Replace with NLB DNS after load balancer limit raised
   
   # Service base URIs on EKS NodePorts
   user_base      = "http://${local.nlb_host}:30081"
@@ -118,7 +118,8 @@ resource "aws_apigatewayv2_integration" "user_signup" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "POST"
   integration_uri        = "${local.user_base}/users/signup"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -133,7 +134,8 @@ resource "aws_apigatewayv2_integration" "user_login" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "POST"
   integration_uri        = "${local.user_base}/users/login"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -148,7 +150,8 @@ resource "aws_apigatewayv2_integration" "user_me" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.user_base}/users/me"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -163,7 +166,8 @@ resource "aws_apigatewayv2_integration" "users_list" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.user_base}/users"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -178,7 +182,8 @@ resource "aws_apigatewayv2_integration" "user_health" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.user_base}/users/healthz"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 10000
 }
@@ -197,7 +202,8 @@ resource "aws_apigatewayv2_integration" "products_list" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.product_base}/products"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -212,7 +218,8 @@ resource "aws_apigatewayv2_integration" "product_get" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.product_base}/products/{product_id}"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -227,7 +234,8 @@ resource "aws_apigatewayv2_integration" "product_create" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "POST"
   integration_uri        = "${local.product_base}/products"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -242,7 +250,8 @@ resource "aws_apigatewayv2_integration" "product_update" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "PUT"
   integration_uri        = "${local.product_base}/products/{product_id}"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -257,7 +266,8 @@ resource "aws_apigatewayv2_integration" "product_delete" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "DELETE"
   integration_uri        = "${local.product_base}/products/{product_id}"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -272,7 +282,8 @@ resource "aws_apigatewayv2_integration" "product_health" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.product_base}/products/healthz"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 10000
 }
@@ -291,7 +302,8 @@ resource "aws_apigatewayv2_integration" "order_create" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "POST"
   integration_uri        = "${local.order_base}/orders"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -306,7 +318,8 @@ resource "aws_apigatewayv2_integration" "orders_list" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.order_base}/orders"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -321,7 +334,8 @@ resource "aws_apigatewayv2_integration" "order_get" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.order_base}/orders/{order_id}"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -336,7 +350,8 @@ resource "aws_apigatewayv2_integration" "order_status" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "PUT"
   integration_uri        = "${local.order_base}/orders/{order_id}/status"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -351,7 +366,8 @@ resource "aws_apigatewayv2_integration" "order_health" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.order_base}/orders/healthz"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 10000
 }
@@ -370,7 +386,8 @@ resource "aws_apigatewayv2_integration" "payment_transactions" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.payment_base}/payments/transactions"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -385,7 +402,8 @@ resource "aws_apigatewayv2_integration" "payment_health" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.payment_base}/payments/healthz"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 10000
 }
@@ -404,7 +422,8 @@ resource "aws_apigatewayv2_integration" "inventory_list" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.inventory_base}/inventory"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -419,7 +438,8 @@ resource "aws_apigatewayv2_integration" "inventory_get" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.inventory_base}/inventory/{product_id}"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -434,7 +454,8 @@ resource "aws_apigatewayv2_integration" "inventory_update" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "PUT"
   integration_uri        = "${local.inventory_base}/inventory/{product_id}"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 29000
 }
@@ -449,7 +470,8 @@ resource "aws_apigatewayv2_integration" "inventory_health" {
   integration_type       = "HTTP_PROXY"
   integration_method     = "GET"
   integration_uri        = "${local.inventory_base}/inventory/healthz"
-  connection_type        = "INTERNET"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
   timeout_milliseconds   = 10000
 }
