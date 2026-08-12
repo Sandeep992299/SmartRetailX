@@ -41,6 +41,12 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: str
     created_at: str
+    points_redeemed: Optional[int] = 0
+    redeemed_coupons: Optional[List[str]] = []
+
+class RedeemRequest(BaseModel):
+    cost: int
+    code: str
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -158,7 +164,9 @@ def format_user_doc(doc) -> dict:
         "username": doc["username"],
         "email": doc["email"],
         "role": doc.get("role", "Customer"),
-        "created_at": doc.get("created_at", "")
+        "created_at": doc.get("created_at", ""),
+        "points_redeemed": doc.get("points_redeemed", 0),
+        "redeemed_coupons": doc.get("redeemed_coupons", [])
     }
 
 # Routes
@@ -222,6 +230,31 @@ def get_user_profile(x_user_email: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="User profile not found")
         
     return format_user_doc(user_doc)
+
+@app.post("/users/me/redeem", response_model=UserResponse)
+def redeem_reward(request: RedeemRequest, x_user_email: Optional[str] = Header(None)):
+    if not x_user_email or db is None:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    user_doc = db.users.find_one({"email": x_user_email})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User profile not found")
+        
+    current_redeemed = user_doc.get("points_redeemed", 0)
+    current_coupons = user_doc.get("redeemed_coupons", [])
+    
+    db.users.update_one(
+        {"email": x_user_email},
+        {
+            "$set": {
+                "points_redeemed": current_redeemed + request.cost,
+                "redeemed_coupons": current_coupons + [request.code]
+            }
+        }
+    )
+    
+    updated_user = db.users.find_one({"email": x_user_email})
+    return format_user_doc(updated_user)
 
 @app.get("/users", response_model=List[UserResponse])
 def get_all_users(

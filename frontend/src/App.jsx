@@ -24,6 +24,7 @@ function App() {
   }, [isDarkMode]);
   const [searchQuery, setSearchQuery] = useState('');
   const [products, setProducts] = useState([]);
+  const [recommendedProducts, setRecommendedProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -53,6 +54,7 @@ function App() {
 
   // Loyalty Program redemptions state
   const [pointsRedeemed, setPointsRedeemed] = useState(0);
+  const [redeemedCoupons, setRedeemedCoupons] = useState([]);
   const [redeemedCoupon, setRedeemedCoupon] = useState('');
 
   // Universal API error banner state
@@ -273,6 +275,7 @@ function App() {
     fetchOrders();
     fetchInventory();
     fetchTransactions();
+    fetchUserProfile();
     
     const interval = setInterval(probeHealth, 5000);
     probeHealth();
@@ -418,6 +421,35 @@ function App() {
     } catch (e) {}
   };
 
+  const fetchUserProfile = async () => {
+    if (!token) return;
+    try {
+      const data = await gatewayFetch('/users/me');
+      setPointsRedeemed(data.points_redeemed || 0);
+      setRedeemedCoupons(data.redeemed_coupons || []);
+      if (data.redeemed_coupons && data.redeemed_coupons.length > 0) {
+        setRedeemedCoupon(data.redeemed_coupons[data.redeemed_coupons.length - 1]);
+      }
+    } catch (e) {
+      console.error("Error fetching user profile:", e);
+    }
+  };
+
+  const fetchRecommendations = async () => {
+    try {
+      const cartProductIds = cart.map(item => item.product_id).join(',');
+      const query = cartProductIds ? `?cart_product_ids=${cartProductIds}` : '';
+      const data = await gatewayFetch(`/products/recommendations${query}`);
+      setRecommendedProducts(data);
+    } catch (e) {
+      console.error("Error fetching recommendations:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchRecommendations();
+  }, [cart, products]);
+
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -457,7 +489,6 @@ function App() {
         
         setToken(data.access_token);
         setUser({ username: data.username, role: data.role, email: data.email });
-        setPointsRedeemed(0); // reset redemptions
         addLog(`Sign in successful. User: ${data.username}`, "info");
         setActiveTab('shop');
       }
@@ -474,6 +505,9 @@ function App() {
     setUser(null);
     setOrders([]);
     setTransactions([]);
+    setPointsRedeemed(0);
+    setRedeemedCoupons([]);
+    setRedeemedCoupon('');
     addLog("User logged out.", "info");
     setActiveTab('shop');
   };
@@ -750,41 +784,24 @@ function App() {
   const loyaltyPoints = Math.max(0, basePoints - pointsRedeemed);
 
   // Redeem rewards logic
-  const handleRedeemReward = (cost, code) => {
+  const handleRedeemReward = async (cost, code) => {
     if (loyaltyPoints < cost) {
       alert("Insufficient points! Shop more to earn loyalty points.");
       return;
     }
-    setPointsRedeemed(prev => prev + cost);
-    setRedeemedCoupon(code);
-    addLog(`Redeemed ${cost} loyalty points for coupon: ${code}`, "info");
-    alert(`Reward Redeemed Successfully!\nYour Coupon Code: ${code}\nThis code has been copied to your console logs.`);
-  };
-
-  // Recommendations logic (Affinity categories matching items currently in Cart or Order history)
-  const getRecommendations = () => {
-    if (products.length === 0) return [];
-    
-    // Identify categories with user affinity
-    const affinityCategories = new Set(
-      cart.map(item => {
-        const prod = products.find(p => p.id === item.product_id);
-        return prod ? prod.category : null;
-      }).filter(Boolean)
-    );
-
-    // If affinity is empty, fallback to trending electronics and premium furniture
-    if (affinityCategories.size === 0) {
-      return products.slice(0, 3);
+    try {
+      const data = await gatewayFetch('/users/me/redeem', {
+        method: 'POST',
+        body: JSON.stringify({ cost, code })
+      });
+      setPointsRedeemed(data.points_redeemed || 0);
+      setRedeemedCoupons(data.redeemed_coupons || []);
+      setRedeemedCoupon(code);
+      addLog(`Redeemed ${cost} loyalty points for coupon: ${code}`, "info");
+      alert(`Reward Redeemed Successfully!\nYour Coupon Code: ${code}\nThis code has been copied to your console logs.`);
+    } catch (e) {
+      alert(`Failed to redeem reward: ${e.message}`);
     }
-
-    // Return products in affinity categories that are NOT already in the cart
-    const recommended = products.filter(p => 
-      affinityCategories.has(p.category) && 
-      !cart.some(c => c.product_id === p.id)
-    );
-
-    return recommended.length > 0 ? recommended.slice(0, 3) : products.slice(0, 3);
   };
 
   // Format Countdown Timer
@@ -982,14 +999,14 @@ function App() {
               </div>
 
               {/* Dynamic Recommendations Shelf (Product affinity) */}
-              {products.length > 0 && (
+              {recommendedProducts.length > 0 && (
                 <div style={{margin: '24px 0'}}>
                   <h3 style={{fontSize: '17px', fontWeight: '800', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--neutral-dark)'}}>
                     🎯 Recommended For You
                     <span style={{fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'normal'}}>(Based on your interests)</span>
                   </h3>
                   <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px'}}>
-                    {getRecommendations().map(p => (
+                    {recommendedProducts.map(p => (
                       <div key={`rec-${p.id}`} onClick={() => setSelectedProduct(p)} style={{display: 'flex', gap: '12px', padding: '12px', background: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer', transition: 'var(--transition-smooth)', boxShadow: 'var(--shadow-sm)'}} className="rec-card-hover">
                         <img src={resolveProductImage(p.image_url, p.name)} alt={p.name} style={{width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px'}} />
                         <div style={{display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden'}}>
@@ -1441,9 +1458,14 @@ function App() {
                           <button onClick={() => handleRedeemReward(400, 'VIP-15-SRX')} className="btn-primary" style={{padding: '4px 8px', fontSize: '10px'}}>Redeem</button>
                         </div>
                       </div>
-                      {redeemedCoupon && (
-                        <div style={{marginTop: '12px', padding: '8px', background: 'var(--neutral-light)', border: '1px dashed var(--primary)', borderRadius: '8px', fontSize: '11px', textAlign: 'center'}}>
-                          Active Code: <strong>{redeemedCoupon}</strong>
+                      {redeemedCoupons && redeemedCoupons.length > 0 && (
+                        <div style={{marginTop: '12px', padding: '8px', background: 'var(--neutral-light)', border: '1px dashed var(--primary)', borderRadius: '8px', fontSize: '11px'}}>
+                          <div style={{fontWeight: '700', marginBottom: '4px', textAlign: 'center'}}>Redeemed Coupons:</div>
+                          <ul style={{margin: 0, paddingLeft: '16px', listStyleType: 'none', display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                            {redeemedCoupons.map((code, idx) => (
+                              <li key={idx} style={{fontFamily: 'monospace', fontWeight: 'bold', background: '#fff', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', textAlign: 'center'}}>{code}</li>
+                            ))}
+                          </ul>
                         </div>
                       )}
                     </div>

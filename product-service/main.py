@@ -159,6 +159,59 @@ def get_products(response: Response, category: Optional[str] = None):
             
     return products
 
+@app.get("/products/recommendations", response_model=List[ProductResponse])
+def get_recommendations(cart_product_ids: Optional[str] = None):
+    if db is None:
+        s3_base = "https://smartretailx-public-assets.s3.amazonaws.com/products"
+        return [
+            {"id": "dummy1", "name": "Wireless Noise-Canceling Headphones", "description": "Premium sound isolation and 40h battery.", "price": 199.99, "category": "Electronics", "image_url": f"{s3_base}/wireless-headphones.jpg"},
+            {"id": "dummy2", "name": "Ergonomic Office Chair", "description": "High-back mesh chair with Lumbar support.", "price": 249.50, "category": "Furniture", "image_url": f"{s3_base}/office-chair.jpg"},
+            {"id": "dummy3", "name": "Stainless Steel Water Bottle", "description": "Double-wall vacuum insulated, 32 oz.", "price": 29.99, "category": "Outdoor", "image_url": f"{s3_base}/water-bottle.jpg"}
+        ][:3]
+
+    fallback_cursor = db.products.find().limit(3)
+    fallback_products = [format_product_doc(p) for p in fallback_cursor]
+    
+    if not cart_product_ids:
+        return fallback_products
+        
+    product_id_list = [pid.strip() for pid in cart_product_ids.split(",") if pid.strip()]
+    if not product_id_list:
+        return fallback_products
+        
+    from bson import ObjectId
+    cart_object_ids = []
+    for pid in product_id_list:
+        try:
+            cart_object_ids.append(ObjectId(pid))
+        except Exception:
+            pass
+            
+    if not cart_object_ids:
+        return fallback_products
+        
+    cart_products = list(db.products.find({"_id": {"$in": cart_object_ids}}))
+    categories = set(p["category"] for p in cart_products)
+    
+    if not categories:
+        return fallback_products
+        
+    recommended_cursor = db.products.find({
+        "category": {"$in": list(categories)},
+        "_id": {"$nin": cart_object_ids}
+    }).limit(3)
+    
+    recommended = [format_product_doc(p) for p in recommended_cursor]
+    
+    if len(recommended) < 3:
+        for p in fallback_products:
+            if p["id"] not in product_id_list and not any(r["id"] == p["id"] for r in recommended):
+                recommended.append(p)
+                if len(recommended) >= 3:
+                    break
+                    
+    return recommended[:3]
+
 @app.get("/products/{product_id}", response_model=ProductResponse)
 def get_product(product_id: str, response: Response):
     global product_cache_hits, product_cache_misses
