@@ -48,6 +48,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Debug AWS Credentials Status
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+            echo "::error::AWS_ACCESS_KEY_ID secret is empty or not found in this runner context!"
+          else
+            echo "AWS_ACCESS_KEY_ID secret is populated."
+          fi
+          if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "::error::AWS_SECRET_ACCESS_KEY secret is empty or not found in this runner context!"
+          else
+            echo "AWS_SECRET_ACCESS_KEY secret is populated."
+          fi
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
