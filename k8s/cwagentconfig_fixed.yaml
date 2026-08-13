@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cwagentconfig
+  namespace: amazon-cloudwatch
+data:
+  cwagentconfig.json: |
+    {
+      "agent": {
+        "region": "us-east-1"
+      },
+      "logs": {
+        "metrics_collected": {
+          "kubernetes": {
+            "cluster_name": "smartretailx-eks-prod",
+            "metrics_collection_interval": 60
+          }
+        },
+        "force_flush_interval": 5
+      }
+    }

@@ -5,6 +5,9 @@ import jwt
 from fastapi import FastAPI, Request, Response, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 import redis
+from aws_xray_sdk.core import xray_recorder
+from aws_xray_sdk.core import patch_all
+from aws_xray_sdk.ext.fastapi.middleware import AWSXRayMiddleware
 
 # Configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "smartretailx-super-secret-key-123456")
@@ -47,6 +50,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# AWS X-Ray Configuration
+_xray_daemon_host = os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1")
+xray_recorder.configure(
+    service="api-gateway",
+    daemon_address=f"{_xray_daemon_host}:2000"
+)
+patch_all()
+app.add_middleware(AWSXRayMiddleware, recorder=xray_recorder)
 
 # HTTP Client for proxying
 http_client = httpx.AsyncClient()

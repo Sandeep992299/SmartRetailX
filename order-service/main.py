@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
 from kafka import KafkaProducer, KafkaConsumer
+from aws_xray_sdk.core import xray_recorder, patch_all
+from aws_xray_sdk.ext.fastapi.middleware import AWSXRayMiddleware
 
 # Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -76,6 +78,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# AWS X-Ray Configuration
+_xray_daemon_host = os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1")
+xray_recorder.configure(service="order-service", daemon_address=f"{_xray_daemon_host}:2000")
+patch_all()
+app.add_middleware(AWSXRayMiddleware, recorder=xray_recorder)
 
 # Order Service metrics storage
 order_requests_total = {}

@@ -3,6 +3,8 @@ import json
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
+from aws_xray_sdk.core import xray_recorder, patch_all
+from aws_xray_sdk.ext.fastapi.middleware import AWSXRayMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
 import redis
@@ -61,6 +63,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# AWS X-Ray Configuration
+_xray_daemon_host = os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1")
+xray_recorder.configure(service="product-service", daemon_address=f"{_xray_daemon_host}:2000")
+patch_all()
+app.add_middleware(AWSXRayMiddleware, recorder=xray_recorder)
 
 # Seed database with sample products containing AWS S3 URLs if empty
 @app.on_event("startup")

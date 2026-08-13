@@ -12,6 +12,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from kafka import KafkaConsumer, KafkaProducer
+from aws_xray_sdk.core import xray_recorder, patch_all
+from aws_xray_sdk.ext.fastapi.middleware import AWSXRayMiddleware
 
 # Configuration
 # By default, use PostgreSQL. If POSTGRES_DB is not defined or connection fails, fallback to SQLite.
@@ -200,6 +202,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# AWS X-Ray Configuration
+_xray_daemon_host = os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1")
+xray_recorder.configure(service="payment-service", daemon_address=f"{_xray_daemon_host}:2000")
+patch_all()
+app.add_middleware(AWSXRayMiddleware, recorder=xray_recorder)
 
 # Payment Service metrics storage
 payment_requests_total = {}

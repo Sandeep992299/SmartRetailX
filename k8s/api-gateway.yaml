@@ -42,6 +42,10 @@ spec:
           value: "redis"
         - name: REDIS_PORT
           value: "6379"
+        - name: AWS_XRAY_DAEMON_ADDRESS
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
 ---
 apiVersion: v1
 kind: Service

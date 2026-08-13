@@ -1,0 +1,315 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-cloudwatch-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  cloudwatch.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: CloudWatch
+        type: cloudwatch
+        accessMode: proxy
+        jsonData:
+          authType: keys
+          defaultRegion: us-east-1
+        secureJsonData:
+          accessKey: "AKIAYVKCOFMBIDXRA4ID"
+          secretKey: "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"
+        editable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-cloudwatch-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  smartretailx-cloudwatch-dashboard.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "datasource",
+              "uid": "grafana"
+            },
+            "enable": true,
+            "hide": true,
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "title": "SmartRetailX AWS EKS Infrastructure Metrics",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "CloudWatch"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth"
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
+          "id": 2,
+          "targets": [
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "CloudWatch"
+              },
+              "namespace": "ContainerInsights",
+              "metricName": "node_cpu_utilization",
+              "statistic": "Average",
+              "dimensions": {
+                "ClusterName": "smartretailx-eks-prod"
+              },
+              "refId": "A",
+              "region": "us-east-1"
+            }
+          ],
+          "title": "EKS Worker Nodes CPU Utilization",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "CloudWatch"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth"
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "id": 3,
+          "targets": [
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "CloudWatch"
+              },
+              "namespace": "ContainerInsights",
+              "metricName": "node_memory_utilization",
+              "statistic": "Average",
+              "dimensions": {
+                "ClusterName": "smartretailx-eks-prod"
+              },
+              "refId": "A",
+              "region": "us-east-1"
+            }
+          ],
+          "title": "EKS Worker Nodes Memory Utilization",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 9
+          },
+          "id": 4,
+          "title": "Database (RDS) & Cache (ElastiCache) Metrics",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "CloudWatch"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line"
+              },
+              "unit": "none"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 10
+          },
+          "id": 5,
+          "targets": [
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "CloudWatch"
+              },
+              "namespace": "AWS/RDS",
+              "metricName": "DatabaseConnections",
+              "statistic": "Average",
+              "dimensions": {
+                "DBInstanceIdentifier": "prod-payments-db"
+              },
+              "refId": "A",
+              "region": "us-east-1"
+            }
+          ],
+          "title": "RDS PostgreSQL Database Connections",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "CloudWatch"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line"
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 10
+          },
+          "id": 6,
+          "targets": [
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "CloudWatch"
+              },
+              "namespace": "AWS/RDS",
+              "metricName": "CPUUtilization",
+              "statistic": "Average",
+              "dimensions": {
+                "DBInstanceIdentifier": "prod-payments-db"
+              },
+              "refId": "A",
+              "region": "us-east-1"
+            }
+          ],
+          "title": "RDS PostgreSQL CPU Utilization",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "id": 7,
+          "title": "AWS MSK Managed Kafka Metrics",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "CloudWatch"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line"
+              },
+              "unit": "Bps"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 19
+          },
+          "id": 8,
+          "targets": [
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "CloudWatch"
+              },
+              "namespace": "AWS/Kafka",
+              "metricName": "BytesInPerSec",
+              "statistic": "Sum",
+              "dimensions": {
+                "Cluster Name": "prod-kafka-broker"
+              },
+              "refId": "A",
+              "region": "us-east-1"
+            },
+            {
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "CloudWatch"
+              },
+              "namespace": "AWS/Kafka",
+              "metricName": "BytesOutPerSec",
+              "statistic": "Sum",
+              "dimensions": {
+                "Cluster Name": "prod-kafka-broker"
+              },
+              "refId": "B",
+              "region": "us-east-1"
+            }
+          ],
+          "title": "AWS MSK Broker Bytes In / Bytes Out Throughput",
+          "type": "timeseries"
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["cloudwatch", "smartretailx"],
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "SmartRetailX CloudWatch Observability Dashboard",
+      "uid": "smartretailx-cloudwatch",
+      "version": 1,
+      "weekStart": ""
+    }

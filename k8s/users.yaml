@@ -46,6 +46,10 @@ spec:
           value: "smartretailx-super-secret-key-123456"
         - name: MONGO_URI
           value: "mongodb://mongodb:27017"
+        - name: AWS_XRAY_DAEMON_ADDRESS
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
 ---
 apiVersion: v1
 kind: Service

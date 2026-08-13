@@ -37,6 +37,10 @@ spec:
           value: "b-1.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092"
         - name: MONGO_URI
           value: "mongodb://mongodb:27017"
+        - name: AWS_XRAY_DAEMON_ADDRESS
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
 ---
 apiVersion: v1
 kind: Service

@@ -3,3 +3,4 @@ uvicorn==0.24.0.post1
 httpx==0.25.1
 redis==5.0.1
 pyjwt==2.8.0
+aws-xray-sdk==2.12.0

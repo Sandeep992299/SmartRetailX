@@ -37,6 +37,10 @@ spec:
         - name: DATABASE_URL
           # In Production, this points to AWS RDS Instance
           value: "postgresql://postgres:SuperSecurePass123!@rds-postgres-service:5432/smartretailx_payments"
+        - name: AWS_XRAY_DAEMON_ADDRESS
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
 ---
 apiVersion: v1
 kind: Service
