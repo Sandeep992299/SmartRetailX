@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from aws_xray_sdk.core import xray_recorder, patch_all
-from aws_xray_sdk.ext.fastapi.middleware import AWSXRayMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, EmailStr
 import bcrypt
 import jwt
@@ -79,7 +79,21 @@ app.add_middleware(
 _xray_daemon_host = os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1")
 xray_recorder.configure(service="user-service", daemon_address=f"{_xray_daemon_host}:2000")
 patch_all()
-app.add_middleware(AWSXRayMiddleware, recorder=xray_recorder)
+
+class _XRayMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        segment = xray_recorder.begin_segment(f"{request.method} {request.url.path}")
+        try:
+            response = await call_next(request)
+            segment.put_http_meta("response", {"status": response.status_code})
+            return response
+        except Exception as exc:
+            segment.add_exception(exc, [])
+            raise
+        finally:
+            xray_recorder.end_segment()
+
+app.add_middleware(_XRayMiddleware)
 
 # User Service metrics storage
 user_requests_total = {}

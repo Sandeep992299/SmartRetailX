@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import redis
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
-from aws_xray_sdk.ext.fastapi.middleware import AWSXRayMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "smartretailx-super-secret-key-123456")
@@ -58,7 +58,21 @@ xray_recorder.configure(
     daemon_address=f"{_xray_daemon_host}:2000"
 )
 patch_all()
-app.add_middleware(AWSXRayMiddleware, recorder=xray_recorder)
+
+class _XRayMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        segment = xray_recorder.begin_segment(f"{request.method} {request.url.path}")
+        try:
+            response = await call_next(request)
+            segment.put_http_meta("response", {"status": response.status_code})
+            return response
+        except Exception as exc:
+            segment.add_exception(exc, [])
+            raise
+        finally:
+            xray_recorder.end_segment()
+
+app.add_middleware(_XRayMiddleware)
 
 # HTTP Client for proxying
 http_client = httpx.AsyncClient()

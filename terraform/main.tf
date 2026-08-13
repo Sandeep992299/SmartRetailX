@@ -18,7 +18,6 @@ terraform {
 
 provider "aws" {
   region  = var.aws_region
-  profile = "aquasense"
 }
 
 # 1. VPC Module (Networking)
