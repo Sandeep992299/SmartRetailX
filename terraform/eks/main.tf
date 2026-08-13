@@ -79,6 +79,11 @@ resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOn
   role       = aws_iam_role.node.name
 }
 
+resource "aws_iam_role_policy_attachment" "node_CloudWatchAgentServerPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+  role       = aws_iam_role.node.name
+}
+
 # Node Security Group (Exposed so RDS/Redis can filter access)
 resource "aws_security_group" "node" {
   name        = "${var.eks_cluster_name}-node-sg"
