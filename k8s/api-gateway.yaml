@@ -17,7 +17,8 @@ spec:
     spec:
       containers:
       - name: api-gateway
-        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-api-gateway:v1.0.0
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-api-gateway:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
         resources:
@@ -59,3 +60,5 @@ spec:
   selector:
     app: api-gateway
   type: LoadBalancer
+
+

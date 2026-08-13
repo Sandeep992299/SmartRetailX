@@ -31,7 +31,8 @@ spec:
     spec:
       containers:
       - name: user-service
-        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-user-service:v1.0.0
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-user-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8001
         resources:
@@ -71,3 +72,5 @@ spec:
   selector:
     app: user-service
   type: NodePort
+
+

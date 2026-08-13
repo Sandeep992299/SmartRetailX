@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: inventory-service
-        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-inventory-service:v1.0.1
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-inventory-service:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8005
@@ -68,3 +68,4 @@ metadata:
 spec:
   type: ExternalName
   externalName: prod-payments-db.c4v466m6cial.us-east-1.rds.amazonaws.com
+

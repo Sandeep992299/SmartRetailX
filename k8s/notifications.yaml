@@ -21,7 +21,8 @@ spec:
     spec:
       containers:
       - name: notification-service
-        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-notification-service:v1.0.0
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-notification-service:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8006
         resources:
@@ -51,3 +52,5 @@ spec:
   selector:
     app: notification-service
   type: ClusterIP
+
+

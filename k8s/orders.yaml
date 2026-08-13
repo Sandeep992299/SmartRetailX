@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: order-service
-        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-order-service:v1.0.1
+        image: 595529181954.dkr.ecr.us-east-1.amazonaws.com/smartretailx-order-service:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8003
@@ -55,3 +55,4 @@ spec:
   selector:
     app: order-service
   type: NodePort
+
