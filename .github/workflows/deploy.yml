@@ -84,11 +84,15 @@ jobs:
           done
 
   # Job 3: Provision AWS Infrastructure via Terraform
+  # NOTE: Skipped in CI — Terraform state is managed locally.
+  # Running terraform apply without a remote backend (S3) would treat
+  # the live EKS/VPC/RDS/MSK as non-existent and attempt to recreate
+  # everything from scratch, conflicting with running infrastructure.
   terraform:
     name: Deploy Infrastructure via Terraform
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: false   # Intentionally disabled — manage infra locally with terraform apply
     environment: production
     steps:
       - name: Checkout Code
@@ -124,7 +128,7 @@ jobs:
   # Job 4: EKS rolling deployments rollout updates
   deploy-eks:
     name: Deploy Containers to Amazon EKS
-    needs: terraform
+    needs: build-and-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
