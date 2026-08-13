@@ -54,6 +54,7 @@ module "rds" {
   db_user            = var.db_user
   db_password        = var.db_password
   allowed_security_group_id = module.eks.node_security_group_id
+  vpc_cidr           = var.vpc_cidr
 }
 
 # 4. ElastiCache Redis Module (Catalog Cache & Rate Limit Store)
@@ -63,6 +64,7 @@ module "elasticache" {
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
   allowed_security_group_id = module.eks.node_security_group_id
+  vpc_cidr           = var.vpc_cidr
 }
 
 # 5. MSK Kafka Module (Event Broker Hub)

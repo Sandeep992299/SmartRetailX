@@ -19,6 +19,7 @@ resource "aws_security_group" "redis" {
     to_port         = 6379
     protocol        = "tcp"
     security_groups = [var.allowed_security_group_id]
+    cidr_blocks     = [var.vpc_cidr]
   }
 
   egress {
