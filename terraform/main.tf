@@ -72,6 +72,7 @@ module "msk" {
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
   allowed_security_group_id = module.eks.node_security_group_id
+  vpc_cidr           = var.vpc_cidr
 }
 
 # 6. Lambda Module (Event-Driven Notification Lambda triggered by SQS)

@@ -13,6 +13,7 @@ resource "aws_security_group" "msk" {
     to_port         = 9092
     protocol        = "tcp"
     security_groups = [var.allowed_security_group_id]
+    cidr_blocks     = [var.vpc_cidr]
   }
 
   ingress {
@@ -21,6 +22,7 @@ resource "aws_security_group" "msk" {
     to_port         = 9094
     protocol        = "tcp"
     security_groups = [var.allowed_security_group_id]
+    cidr_blocks     = [var.vpc_cidr]
   }
 
   egress {
