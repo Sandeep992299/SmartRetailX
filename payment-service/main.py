@@ -121,8 +121,8 @@ class TransactionDB(Base):
     __tablename__ = "payment_transactions"
     id = Column(Integer, primary_key=True, index=True)
     transaction_uuid = Column(String, unique=True, nullable=False, index=True)
-    order_id = Column(Integer, nullable=False, index=True)
-    user_id = Column(Integer, nullable=False)
+    order_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, nullable=False)
     user_email = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     status = Column(String, default="Success") # Success, Failed, Refunded

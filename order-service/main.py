@@ -114,6 +114,7 @@ def publish_order_event(event_type: str, order_doc: dict):
             "user_email": order_doc["user_email"],
             "total_amount": order_doc["total_amount"],
             "status": order_doc["status"],
+            "correlation_id": order_doc.get("correlation_id", "unknown-correlation"),
             "items": [
                 {
                     "product_id": item["product_id"],
