@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from pymongo import MongoClient
 from kafka import KafkaProducer, KafkaConsumer
 from aws_xray_sdk.core import xray_recorder, patch_all
-from starlette.middleware.base import BaseHTTPMiddleware
+from aws_xray_sdk.core.async_context import AsyncContext
 
 # Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -80,24 +80,45 @@ app.add_middleware(
 )
 
 # AWS X-Ray Configuration
-_xray_daemon_host = os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1")
-xray_recorder.configure(service="order-service", daemon_address=f"{_xray_daemon_host}:2000")
+_xray_daemon_host = os.getenv("XRAY_DAEMON_HOST", "127.0.0.1")
+xray_recorder.configure(
+    service="order-service",
+    daemon_address=f"{_xray_daemon_host}:2000",
+    context=AsyncContext()
+)
 patch_all()
 
-class _XRayMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        segment = xray_recorder.begin_segment(f"{request.method} {request.url.path}")
+class XRayMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        segment_name = f"{scope.get('method', 'GET')} {scope.get('path', '/')}"
+        segment = xray_recorder.begin_segment(segment_name)
+        segment.put_http_meta("request", {
+            "url": scope.get("path", "/"),
+            "method": scope.get("method", "GET")
+        })
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                status = message.get("status")
+                segment.put_http_meta("response", {"status": status})
+            await send(message)
+
         try:
-            response = await call_next(request)
-            segment.put_http_meta("response", {"status": response.status_code})
-            return response
+            await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc, [])
+            segment.add_exception(exc)
             raise
         finally:
             xray_recorder.end_segment()
 
-app.add_middleware(_XRayMiddleware)
+app.add_middleware(XRayMiddleware)
 
 # Order Service metrics storage
 order_requests_total = {}
@@ -417,3 +438,5 @@ def start_workers():
     sim_thread = threading.Thread(target=run_file_simulator, daemon=True)
     sim_thread.start()
     print("Order Service background consumer workers started.")
+
+

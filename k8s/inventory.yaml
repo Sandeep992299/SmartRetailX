@@ -6,7 +6,7 @@ metadata:
   labels:
     app: inventory-service
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: inventory-service
@@ -41,7 +41,7 @@ spec:
           value: "b-1.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092"
         - name: MONGO_URI
           value: "mongodb://mongodb:27017"
-        - name: AWS_XRAY_DAEMON_ADDRESS
+        - name: XRAY_DAEMON_HOST
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
@@ -68,4 +68,6 @@ metadata:
 spec:
   type: ExternalName
   externalName: prod-payments-db.c4v466m6cial.us-east-1.rds.amazonaws.com
+
+
 

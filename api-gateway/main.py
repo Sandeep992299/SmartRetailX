@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import redis
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
-from starlette.middleware.base import BaseHTTPMiddleware
+from aws_xray_sdk.core.async_context import AsyncContext
 
 # Configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "smartretailx-super-secret-key-123456")
@@ -52,27 +52,45 @@ app.add_middleware(
 )
 
 # AWS X-Ray Configuration
-_xray_daemon_host = os.getenv("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1")
+_xray_daemon_host = os.getenv("XRAY_DAEMON_HOST", "127.0.0.1")
 xray_recorder.configure(
     service="api-gateway",
-    daemon_address=f"{_xray_daemon_host}:2000"
+    daemon_address=f"{_xray_daemon_host}:2000",
+    context=AsyncContext()
 )
 patch_all()
 
-class _XRayMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        segment = xray_recorder.begin_segment(f"{request.method} {request.url.path}")
+class XRayMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        segment_name = f"{scope.get('method', 'GET')} {scope.get('path', '/')}"
+        segment = xray_recorder.begin_segment(segment_name)
+        segment.put_http_meta("request", {
+            "url": scope.get("path", "/"),
+            "method": scope.get("method", "GET")
+        })
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                status = message.get("status")
+                segment.put_http_meta("response", {"status": status})
+            await send(message)
+
         try:
-            response = await call_next(request)
-            segment.put_http_meta("response", {"status": response.status_code})
-            return response
+            await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc, [])
+            segment.add_exception(exc)
             raise
         finally:
             xray_recorder.end_segment()
 
-app.add_middleware(_XRayMiddleware)
+app.add_middleware(XRayMiddleware)
 
 # HTTP Client for proxying
 http_client = httpx.AsyncClient()
@@ -324,3 +342,5 @@ def prometheus_metrics():
 @app.on_event("shutdown")
 async def shutdown():
     await http_client.aclose()
+
+

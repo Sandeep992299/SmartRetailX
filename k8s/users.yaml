@@ -14,7 +14,7 @@ metadata:
     service-port: "8001"
     nodeport: "30081"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: user-service
@@ -47,7 +47,7 @@ spec:
           value: "smartretailx-super-secret-key-123456"
         - name: MONGO_URI
           value: "mongodb://mongodb:27017"
-        - name: AWS_XRAY_DAEMON_ADDRESS
+        - name: XRAY_DAEMON_HOST
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
@@ -72,5 +72,7 @@ spec:
   selector:
     app: user-service
   type: NodePort
+
+
 
 

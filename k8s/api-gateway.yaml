@@ -43,7 +43,7 @@ spec:
           value: "redis"
         - name: REDIS_PORT
           value: "6379"
-        - name: AWS_XRAY_DAEMON_ADDRESS
+        - name: XRAY_DAEMON_HOST
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
@@ -60,5 +60,7 @@ spec:
   selector:
     app: api-gateway
   type: LoadBalancer
+
+
 
 

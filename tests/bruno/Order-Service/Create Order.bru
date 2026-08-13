@@ -1,0 +1,28 @@
+meta {
+  name: Create Order
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{GATEWAY_URL}}/orders
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "items": [
+      {
+        "product_id": 1,
+        "product_name": "Wireless Noise-Canceling Headphones",
+        "price": 199.99,
+        "quantity": 1
+      }
+    ]
+  }
+}

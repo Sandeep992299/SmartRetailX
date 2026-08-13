@@ -56,7 +56,7 @@ def test_create_order_unauthorized():
     """Placing an order without authorization headers should fail with 401."""
     try:
         res = requests.post(f"{GATEWAY_URL}/orders", json={
-            "items": [{"product_id": 1, "product_name": "Test", "price": 10.0, "quantity": 1}]
+            "items": [{"product_id": "1", "product_name": "Test", "price": 10.0, "quantity": 1}]
         })
         assert res.status_code == 401
     except requests.exceptions.ConnectionError:
@@ -68,7 +68,7 @@ def test_create_order_authorized(service_token):
         headers = {"Authorization": f"Bearer {service_token}"}
         res = requests.post(f"{GATEWAY_URL}/orders", headers=headers, json={
             "items": [
-                {"product_id": 1, "product_name": "Wireless Noise-Canceling Headphones", "price": 199.99, "quantity": 1}
+                {"product_id": "1", "product_name": "Wireless Noise-Canceling Headphones", "price": 199.99, "quantity": 1}
             ]
         })
         assert res.status_code == 201

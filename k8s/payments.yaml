@@ -6,7 +6,7 @@ metadata:
   labels:
     app: payment-service
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: payment-service
@@ -38,7 +38,7 @@ spec:
         - name: DATABASE_URL
           # In Production, this points to AWS RDS Instance
           value: "postgresql://postgres:SuperSecurePass123!@rds-postgres-service:5432/smartretailx_payments"
-        - name: AWS_XRAY_DAEMON_ADDRESS
+        - name: XRAY_DAEMON_HOST
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
@@ -56,5 +56,7 @@ spec:
   selector:
     app: payment-service
   type: NodePort
+
+
 
 
