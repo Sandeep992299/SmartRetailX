@@ -1,28 +1,28 @@
 meta {
-  name: Create Order
+  name: Create Order Missing Auth
   type: http
-  seq: 1
+  seq: 2
 }
 
 post {
   url: {{GATEWAY_URL}}/orders
   body: json
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{token}}
+  auth: none
 }
 
 body:json {
   {
     "items": [
       {
-        "product_id": 1,
+        "product_id": "1",
         "product_name": "Wireless Noise-Canceling Headphones",
         "price": 199.99,
         "quantity": 1
       }
     ]
   }
+}
+
+assert {
+  res.status: eq 401
 }

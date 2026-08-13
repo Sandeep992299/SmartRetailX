@@ -1,0 +1,16 @@
+meta {
+  name: Order Service Health
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{GATEWAY_URL}}/orders/healthz
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq healthy
+}

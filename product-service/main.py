@@ -98,7 +98,7 @@ class XRayMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc)
+            segment.add_exception(exc, [])
             raise
         finally:
             xray_recorder.end_segment()
@@ -433,5 +433,6 @@ def prometheus_metrics():
     lines.append(f"product_cache_misses_total {product_cache_misses}")
     
     return "\n".join(lines) + "\n"
+
 
 

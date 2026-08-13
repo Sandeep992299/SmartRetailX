@@ -9,3 +9,12 @@ get {
   body: none
   auth: none
 }
+
+assert {
+  res.status: eq 200
+  res.body: isDefined
+}
+
+vars:post-response {
+  product_id: res.body[0].id
+}

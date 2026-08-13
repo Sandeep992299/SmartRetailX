@@ -1,0 +1,19 @@
+meta {
+  name: Get Profile Invalid Auth
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{GATEWAY_URL}}/users/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: tampered.bearer.jwt.signature
+}
+
+assert {
+  res.status: eq 401
+}

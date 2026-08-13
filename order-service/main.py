@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from pymongo import MongoClient
 from kafka import KafkaProducer, KafkaConsumer
 from aws_xray_sdk.core import xray_recorder, patch_all
@@ -48,6 +48,18 @@ class OrderItemBase(BaseModel):
     product_name: str
     price: float
     quantity: int
+
+    @validator("price")
+    def price_must_be_positive(cls, v):
+        if v <= 0:
+            raise ValueError("Price must be greater than zero")
+        return v
+
+    @validator("quantity")
+    def quantity_must_be_positive(cls, v):
+        if v <= 0:
+            raise ValueError("Quantity must be greater than zero")
+        return v
 
 class OrderCreate(BaseModel):
     items: List[OrderItemBase]
@@ -113,7 +125,7 @@ class XRayMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc)
+            segment.add_exception(exc, [])
             raise
         finally:
             xray_recorder.end_segment()
@@ -438,5 +450,6 @@ def start_workers():
     sim_thread = threading.Thread(target=run_file_simulator, daemon=True)
     sim_thread.start()
     print("Order Service background consumer workers started.")
+
 
 

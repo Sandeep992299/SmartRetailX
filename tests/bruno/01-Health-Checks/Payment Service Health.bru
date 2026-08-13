@@ -1,0 +1,16 @@
+meta {
+  name: Payment Service Health
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{GATEWAY_URL}}/payments/healthz
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq healthy
+}

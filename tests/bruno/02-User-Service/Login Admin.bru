@@ -1,0 +1,22 @@
+meta {
+  name: Login Admin User
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{GATEWAY_URL}}/users/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "bruno_admin@smartretailx.com",
+    "password": "BrunoAdminPassword123!"
+  }
+}
+
+vars:post-response {
+  admin_token: res.body.access_token
+}

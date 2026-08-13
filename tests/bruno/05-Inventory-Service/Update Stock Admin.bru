@@ -1,0 +1,26 @@
+meta {
+  name: Update Stock Admin
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{GATEWAY_URL}}/inventory/1
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_token}}
+}
+
+body:json {
+  {
+    "stock_count": 60
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.stock_count: eq 60
+}

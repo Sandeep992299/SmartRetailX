@@ -1,0 +1,32 @@
+meta {
+  name: Create Order Invalid Quantity
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{GATEWAY_URL}}/orders
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "items": [
+      {
+        "product_id": "1",
+        "product_name": "Wireless Noise-Canceling Headphones",
+        "price": 199.99,
+        "quantity": "invalid_number_type"
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 422
+}

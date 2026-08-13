@@ -226,13 +226,18 @@ A automated testing suite was built in Python using `pytest` to validate core fu
 - **Order Flow**: Verifies placing an order updates its status and triggers downstream events.
 
 ### 4.2 Performance Testing
-We performed load testing on the API Gateway using **k6** to evaluate system performance under load.
+We performed load testing on the API Gateway using both **k6** and **Apache JMeter** to evaluate system performance under load.
 
-#### k6 Test Parameters
-- **Ramp-up**: 0 to 20 users in 30 seconds.
-- **Load Test**: 20 users for 1 minute.
-- **Spike/Stress Test**: 20 to 50 users in 30 seconds, maintaining 50 users for 1 minute.
-- **Ramp-down**: 50 to 0 users in 30 seconds.
+#### Test Parameters & Profiles
+Both k6 and JMeter tests were configured with the following load profile:
+- **Ramp-up (0-30s)**: 0 to 20 users.
+- **Load Plateau (30s-1m30s)**: Maintain 20 users.
+- **Stress Spike (1m30s-2m)**: Ramp-up to 50 concurrent users.
+- **Cooldown (2m-2m30s)**: Ramp down to 0.
+
+#### Tooling Implementation
+- **k6 Script (`tests/k6_load_test.js`)**: Runs lightweight command-line-driven virtual users checking status codes and response structures.
+- **JMeter Test Plan (`tests/jmeter_load_test.jmx`)**: Runs parallel thread groups matching the load curve, useful for report generation and enterprise integrations.
 
 #### Test Results & Analysis
 During testing, the API Gateway successfully handled the simulated traffic:

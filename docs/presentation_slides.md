@@ -89,8 +89,8 @@
 ## Slide 11: Testing & Quality Assurance
 * **Functional Integration Tests**: Pytest checks for authentication, catalog routing, and checkouts.
 * **Performance Load Testing**:
-  * **Tool**: k6 load test script.
-  * **Scenario**: Ramp up from 20 to 50 concurrent users.
+  * **Tooling**: k6 script & Apache JMeter (`.jmx`).
+  * **Scenario**: Profile containing baseline load (20 VUs), stress spike (50 VUs), and cooldown.
   * **Result**: Average gateway latency stayed under 12ms, with 0.00% error rate.
 
 ---

@@ -119,7 +119,7 @@ class XRayMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc)
+            segment.add_exception(exc, [])
             raise
         finally:
             xray_recorder.end_segment()
@@ -494,5 +494,6 @@ def prometheus_metrics():
     lines.append(f"inventory_kafka_connected {1 if kafka_producer is not None else 0}")
     
     return "\n".join(lines)
+
 
 

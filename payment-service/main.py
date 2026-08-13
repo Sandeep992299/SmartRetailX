@@ -165,8 +165,8 @@ except Exception as e:
 class TransactionResponse(BaseModel):
     id: int
     transaction_uuid: str
-    order_id: int
-    user_id: int
+    order_id: str
+    user_id: str
     user_email: str
     amount: float
     status: str
@@ -237,7 +237,7 @@ class XRayMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc)
+            segment.add_exception(exc, [])
             raise
         finally:
             xray_recorder.end_segment()
@@ -625,7 +625,7 @@ def get_transactions(
     if x_user_role in ["Admin", "Manager"]:
         return db.query(TransactionDB).all()
     else:
-        return db.query(TransactionDB).filter(TransactionDB.user_id == int(x_user_id)).all()
+        return db.query(TransactionDB).filter(TransactionDB.user_id == x_user_id).all()
 
 @app.get("/payments/healthz")
 def healthz():
@@ -678,5 +678,6 @@ def prometheus_metrics():
     lines.append(f"payment_kafka_connected {1 if kafka_producer is not None else 0}")
     
     return "\n".join(lines)
+
 
 

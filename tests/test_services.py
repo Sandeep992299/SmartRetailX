@@ -3,7 +3,7 @@ import pytest
 import requests
 
 GATEWAY_URL = os.getenv("TEST_GATEWAY_URL", "http://localhost:8000/api/v1")
-USER_SERVICE_URL = os.getenv("TEST_USER_URL", "http://localhost:8001")
+USER_SERVICE_URL = os.getenv("TEST_USER_URL", "http://localhost:8000/api/v1")
 
 # Use a static unique email prefix for testing
 TEST_EMAIL = "test_user_pytest@smartretailx.com"

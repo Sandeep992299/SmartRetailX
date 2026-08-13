@@ -1,0 +1,20 @@
+meta {
+  name: List Orders
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{GATEWAY_URL}}/orders
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isDefined
+}

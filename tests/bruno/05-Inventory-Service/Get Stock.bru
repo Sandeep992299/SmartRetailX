@@ -1,0 +1,17 @@
+meta {
+  name: Get Stock
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{GATEWAY_URL}}/inventory/1
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.product_id: isDefined
+  res.body.stock_count: gte 0
+}

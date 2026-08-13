@@ -1,0 +1,24 @@
+meta {
+  name: Signup Duplicate User
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{GATEWAY_URL}}/users/signup
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "bruno_test_user",
+    "email": "bruno_test@smartretailx.com",
+    "password": "BrunoPassword123!",
+    "role": "Customer"
+  }
+}
+
+assert {
+  res.status: eq 400
+}

@@ -159,7 +159,22 @@ Run the end-to-end integration verification suite:
 pip install -r tests/requirements.txt
 pytest tests/
 ```
-Run k6 load test:
+
+### Performance & Load Testing
+The platform supports load and stress testing using both **k6** and **Apache JMeter**. Detailed setup, comparisons, and report generation instructions are available in the [Performance Testing Guide](docs/performance_testing_guide.md).
+
+#### Option 1: k6 (Recommended for CLI-first workflows)
+Run the k6 load test:
 ```bash
 k6 run tests/k6_load_test.js
+```
+
+#### Option 2: Apache JMeter (Recommended for report-centric workflows)
+Run the JMeter load test in non-GUI (CLI) mode:
+```bash
+jmeter -n -t tests/jmeter_load_test.jmx -l tests/jmeter_results.jtl
+```
+To override the gateway endpoint dynamically, pass host and port properties:
+```bash
+jmeter -n -t tests/jmeter_load_test.jmx -l tests/jmeter_results.jtl -JGATEWAY_HOST=localhost -JGATEWAY_PORT=8000
 ```

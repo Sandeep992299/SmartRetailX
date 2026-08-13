@@ -1,0 +1,24 @@
+meta {
+  name: Signup Invalid Email
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{GATEWAY_URL}}/users/signup
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "bruno_bad_email",
+    "email": "not-an-email-format",
+    "password": "BrunoPassword123!",
+    "role": "Customer"
+  }
+}
+
+assert {
+  res.status: eq 422
+}

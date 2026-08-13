@@ -193,7 +193,7 @@ class XRayMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc)
+            segment.add_exception(exc, [])
             raise
         finally:
             xray_recorder.end_segment()
@@ -409,5 +409,6 @@ if __name__ == "__main__":
     import uvicorn
     # Standalone execution launch
     uvicorn.run(app, host="0.0.0.0", port=8006)
+
 
 

@@ -1,0 +1,20 @@
+meta {
+  name: Signup Admin User
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{GATEWAY_URL}}/users/signup
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "bruno_admin_user",
+    "email": "bruno_admin@smartretailx.com",
+    "password": "BrunoAdminPassword123!",
+    "role": "Admin"
+  }
+}

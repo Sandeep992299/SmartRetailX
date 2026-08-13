@@ -85,7 +85,7 @@ class XRayMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
-            segment.add_exception(exc)
+            segment.add_exception(exc, [])
             raise
         finally:
             xray_recorder.end_segment()
@@ -342,5 +342,6 @@ def prometheus_metrics():
 @app.on_event("shutdown")
 async def shutdown():
     await http_client.aclose()
+
 
 
