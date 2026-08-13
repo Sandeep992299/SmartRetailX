@@ -30,6 +30,76 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 ORDER_EVENTS_TOPIC = os.getenv("ORDER_EVENTS_TOPIC", "order-events")
 PAYMENT_EVENTS_TOPIC = os.getenv("PAYMENT_EVENTS_TOPIC", "payment-events")
 
+import random
+import requests
+
+def invoke_auth_with_retry(url, payload, max_retries=5):
+    """Illustrative authentication service invocation wrapper with exponential backoff and jitter."""
+    base_delay = 1.0  # Initial delay in seconds
+    max_delay = 16.0  # Cap on backoff delay
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(url, json=payload, timeout=3.0)
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code in [429, 500, 503]:
+                print(f"Transient error {response.status_code}. Retrying...")
+            else:
+                response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"Network error during attempt {attempt}: {e}")
+            
+        delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+        jitter = random.uniform(0, 0.5 * delay)
+        sleep_time = delay + jitter
+        print(f"Backing off for {sleep_time:.2f} seconds...")
+        time.sleep(sleep_time)
+        
+    raise Exception("Max retries exceeded: Service invocation failed.")
+
+class CircuitBreaker:
+    """Custom Circuit Breaker pattern implementation to prevent cascading failures."""
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 30.0):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF-OPEN
+        self.last_state_change = time.time()
+
+    def __call__(self, func, *args, **kwargs):
+        now = time.time()
+        
+        # If open, check if the cool-down/recovery timeout has expired
+        if self.state == "OPEN":
+            if now - self.last_state_change > self.recovery_timeout:
+                self.state = "HALF-OPEN"
+                self.last_state_change = now
+                print("Circuit Breaker transitioned to HALF-OPEN. Testing downstream health...")
+            else:
+                print("Circuit Breaker is OPEN. Failing fast immediately.")
+                raise Exception("CircuitBreakerOpenException: Downstream service temporarily unavailable.")
+
+        try:
+            result = func(*args, **kwargs)
+            # If successful in HALF-OPEN state, close the circuit
+            if self.state == "HALF-OPEN":
+                self.state = "CLOSED"
+                self.failure_count = 0
+                self.last_state_change = now
+                print("Circuit Breaker transitioned to CLOSED. Service restored.")
+            return result
+        except Exception as e:
+            self.failure_count += 1
+            print(f"Service invocation failed ({e}). Failure count: {self.failure_count}")
+            
+            if self.state in ["CLOSED", "HALF-OPEN"] and self.failure_count >= self.failure_threshold:
+                self.state = "OPEN"
+                self.last_state_change = now
+                print("Circuit Breaker tripped to OPEN! Blocking outbound calls.")
+            
+            raise e
+
 # Setup SQLAlchemy
 # Use check_same_thread for SQLite fallback
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") or "sqlite" in DATABASE_URL else {}
