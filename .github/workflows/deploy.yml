@@ -44,6 +44,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    environment: production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -88,6 +89,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    environment: production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -125,6 +127,7 @@ jobs:
     needs: terraform
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    environment: production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
