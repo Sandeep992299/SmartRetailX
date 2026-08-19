@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
-const GATEWAY_URL = `http://adef77e62998148bf97f8564f1fe7123-1693663817.us-east-1.elb.amazonaws.com:8000/api/v1`;
+const GATEWAY_URL = `http://abc3dc5c1549c4f829ade5d0c65a0af6-939735814.us-east-1.elb.amazonaws.com:8000/api/v1`;
 
 const WEBSOCKET_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
   ? `ws://${window.location.hostname}:8006/ws` 

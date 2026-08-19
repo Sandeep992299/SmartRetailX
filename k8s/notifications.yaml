@@ -35,6 +35,8 @@ spec:
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
           value: "b-1.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092"
+        - name: SES_RECIPIENT_EMAIL
+          value: "dissanayakesandeep@gmail.com"
         - name: XRAY_DAEMON_HOST
           valueFrom:
             fieldRef:

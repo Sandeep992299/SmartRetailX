@@ -6,6 +6,7 @@ resource "aws_ecr_repository" "services" {
   for_each             = toset(["user-service", "product-service", "order-service", "payment-service", "inventory-service", "notification-service", "frontend", "api-gateway"])
   name                 = "${var.project_name}-${each.value}"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true

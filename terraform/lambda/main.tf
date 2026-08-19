@@ -94,7 +94,8 @@ resource "aws_lambda_function" "notifier" {
 
   environment {
     variables = {
-      ENV = var.environment
+      ENV                 = var.environment
+      SES_RECIPIENT_EMAIL = "dissanayakesandeep@gmail.com"
     }
   }
 
@@ -109,4 +110,93 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
   function_name    = aws_lambda_function.notifier.arn
   batch_size       = 10
   enabled          = true
+}
+
+# ============================================================
+# Amazon EventBridge Integrations
+# ============================================================
+
+# 1. Event-Driven Rule for Custom Low-Stock Alert Pattern
+resource "aws_cloudwatch_event_rule" "low_stock_rule" {
+  name        = "${var.project_name}-low-stock-rule-${var.environment}"
+  description = "Triggers Lambda when low stock events are published to EventBridge"
+
+  event_pattern = jsonencode({
+    source      = ["smartretailx.inventory"]
+    detail-type = ["LowStockAlert"]
+  })
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# Link custom EventBridge rule to Lambda function target
+resource "aws_cloudwatch_event_target" "low_stock_target" {
+  rule      = aws_cloudwatch_event_rule.low_stock_rule.name
+  target_id = "SendToLambda"
+  arn       = aws_lambda_function.notifier.arn
+}
+
+# Allow EventBridge custom rule to invoke Lambda
+resource "aws_lambda_permission" "allow_eventbridge_low_stock" {
+  statement_id  = "AllowExecutionFromEventBridgeLowStock"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.notifier.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.low_stock_rule.arn
+}
+
+# 2. Scheduled Rule (Cron Trigger for Daily System Health Report at 12:00 PM UTC)
+resource "aws_cloudwatch_event_rule" "daily_report_rule" {
+  name                = "${var.project_name}-daily-report-rule-${var.environment}"
+  description         = "Triggers Lambda daily to send operational platform summary report"
+  schedule_expression = "cron(0 12 * * ? *)"
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# Link scheduled EventBridge rule to Lambda function target
+resource "aws_cloudwatch_event_target" "daily_report_target" {
+  rule      = aws_cloudwatch_event_rule.daily_report_rule.name
+  target_id = "SendDailyReportToLambda"
+  arn       = aws_lambda_function.notifier.arn
+}
+
+# Allow EventBridge cron rule to invoke Lambda
+resource "aws_lambda_permission" "allow_eventbridge_daily_report" {
+  statement_id  = "AllowExecutionFromEventBridgeDailyReport"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.notifier.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_report_rule.arn
+}
+
+# 3. Scheduled Rule (Cron Trigger for Daily Sales PDF Report at 11:59 PM UTC)
+resource "aws_cloudwatch_event_rule" "daily_pdf_rule" {
+  name                = "${var.project_name}-daily-pdf-rule-${var.environment}"
+  description         = "Triggers Lambda at the end of each day to send sales summary PDF"
+  schedule_expression = "cron(59 23 * * ? *)"
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# Link scheduled EventBridge PDF rule to Lambda target
+resource "aws_cloudwatch_event_target" "daily_pdf_target" {
+  rule      = aws_cloudwatch_event_rule.daily_pdf_rule.name
+  target_id = "SendDailyPdfToLambda"
+  arn       = aws_lambda_function.notifier.arn
+}
+
+# Allow EventBridge cron rule to invoke Lambda for PDF reports
+resource "aws_lambda_permission" "allow_eventbridge_daily_pdf" {
+  statement_id  = "AllowExecutionFromEventBridgeDailyPdf"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.notifier.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_pdf_rule.arn
 }
