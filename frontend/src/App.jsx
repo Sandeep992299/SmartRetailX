@@ -1,11 +1,170 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
-const GATEWAY_URL = `http://abc3dc5c1549c4f829ade5d0c65a0af6-939735814.us-east-1.elb.amazonaws.com:8000/api/v1`;
+const GATEWAY_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? `http://localhost:8000/api/v1` 
+  : `/api/v1`;
 
 const WEBSOCKET_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
   ? `ws://${window.location.hostname}:8006/ws` 
-  : `ws://${window.location.hostname}/ws`;
+  : `ws://${window.location.host}/ws`;
+
+const SRI_LANKA_CITIES = {
+  'Colombo': { name: 'Colombo (Central Hub)', lat: 6.9271, lng: 79.8612, x: 120, y: 320, distance: 0, time: '15 mins', hub: 'Dock #4' },
+  'Kandy': { name: 'Kandy Hill Capital', lat: 7.2906, lng: 80.6337, x: 215, y: 250, distance: 115, time: '2 hrs 45 mins', hub: 'Central Depot #2' },
+  'Galle': { name: 'Galle Coastal Port', lat: 6.0535, lng: 80.2210, x: 145, y: 430, distance: 119, time: '1 hr 30 mins', hub: 'Southern Express Hub' },
+  'Matara': { name: 'Matara Southern Terminus', lat: 5.9549, lng: 80.5550, x: 190, y: 450, distance: 160, time: '2 hrs 10 mins', hub: 'Matara Station Hub' },
+  'Negombo': { name: 'Negombo Coastal City', lat: 7.2008, lng: 79.8737, x: 120, y: 275, distance: 38, time: '40 mins', hub: 'Airport Cargo Hub' },
+  'Gampaha': { name: 'Gampaha Metro', lat: 7.0840, lng: 79.9942, x: 135, y: 295, distance: 32, time: '35 mins', hub: 'Western Hub #3' },
+  'Kurunegala': { name: 'Kurunegala Junction', lat: 7.4863, lng: 80.3623, x: 180, y: 220, distance: 94, time: '1 hr 55 mins', hub: 'Wayamba Hub' },
+  'Jaffna': { name: 'Jaffna Northern Peninsula', lat: 9.6615, lng: 80.0255, x: 135, y: 55, distance: 395, time: '6 hrs 20 mins', hub: 'Northern Express Depot' },
+  'Anuradhapura': { name: 'Anuradhapura Ancient City', lat: 8.3114, lng: 80.4037, x: 185, y: 135, distance: 206, time: '3 hrs 40 mins', hub: 'Rajarata Logistics' },
+  'Trincomalee': { name: 'Trincomalee Deep Harbor', lat: 8.5874, lng: 81.2152, x: 285, y: 125, distance: 260, time: '4 hrs 50 mins', hub: 'Eastern Port Terminal' },
+  'Batticaloa': { name: 'Batticaloa Eastern Coast', lat: 7.7310, lng: 81.6747, x: 335, y: 220, distance: 310, time: '5 hrs 30 mins', hub: 'East Coast Station' },
+  'Nuwara Eliya': { name: 'Nuwara Eliya Highlands', lat: 6.9497, lng: 80.7891, x: 235, y: 300, distance: 168, time: '4 hrs 15 mins', hub: 'Highland Logistics' },
+  'Ratnapura': { name: 'Ratnapura City of Gems', lat: 6.6828, lng: 80.4034, x: 180, y: 345, distance: 101, time: '2 hrs 10 mins', hub: 'Sabaragamuwa Depot' },
+  'Badulla': { name: 'Badulla Mountain Hub', lat: 6.9934, lng: 81.0550, x: 270, y: 290, distance: 225, time: '5 hrs 00 mins', hub: 'Uva Mountain Station' },
+  'Dambulla': { name: 'Dambulla Crossroads', lat: 7.8731, lng: 80.6517, x: 215, y: 180, distance: 160, time: '3 hrs 10 mins', hub: 'Central Junction Hub' }
+};
+
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
+function GoogleRoadMap({ dest, colombo, onRouteComputed }) {
+  const mapContainerRef = useRef(null);
+  const [loadError, setLoadError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) {
+      setLoadError(true);
+      setIsLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const renderMapWithDirections = () => {
+      if (!mapContainerRef.current || !window.google || !window.google.maps) return;
+
+      try {
+        const originCoord = { lat: colombo.lat, lng: colombo.lng };
+        const destCoord = { lat: dest.lat, lng: dest.lng };
+
+        // Dark modern roadmap styling
+        const map = new window.google.maps.Map(mapContainerRef.current, {
+          center: { lat: (colombo.lat + dest.lat) / 2, lng: (colombo.lng + dest.lng) / 2 },
+          zoom: 8,
+          mapTypeId: 'roadmap',
+          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          styles: [
+            { elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
+            { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#38bdf8" }] },
+            { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+            { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#132338" }] },
+            { featureType: "road", elementType: "geometry", stylers: [{ color: "#334155" }] },
+            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#1e293b" }] },
+            { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#475569" }] },
+            { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1e293b" }] },
+            { featureType: "transit", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b1329" }] },
+            { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#38bdf8" }] }
+          ]
+        });
+
+        const directionsService = new window.google.maps.DirectionsService();
+        const directionsRenderer = new window.google.maps.DirectionsRenderer({
+          map: map,
+          suppressMarkers: false,
+          polylineOptions: {
+            strokeColor: "#ef4444",   // 🔴 Glowing Red Road Path
+            strokeWeight: 6,
+            strokeOpacity: 0.95
+          }
+        });
+
+        directionsService.route(
+          {
+            origin: originCoord,
+            destination: destCoord,
+            travelMode: window.google.maps.TravelMode.DRIVING,
+          },
+          (result, status) => {
+            if (!isMounted) return;
+            setIsLoading(false);
+            if (status === window.google.maps.DirectionsStatus.OK && result) {
+              directionsRenderer.setDirections(result);
+              if (result.routes && result.routes[0] && result.routes[0].legs && result.routes[0].legs[0]) {
+                const leg = result.routes[0].legs[0];
+                if (onRouteComputed) {
+                  onRouteComputed({
+                    distance: leg.distance.text,
+                    duration: leg.duration.text
+                  });
+                }
+              }
+            } else {
+              console.warn("Google Directions returned status:", status);
+              setLoadError(true);
+            }
+          }
+        );
+      } catch (e) {
+        if (isMounted) {
+          console.error("Map initialization failed", e);
+          setLoadError(true);
+          setIsLoading(false);
+        }
+      }
+    };
+
+    if (window.google && window.google.maps) {
+      renderMapWithDirections();
+    } else {
+      const existingScript = document.getElementById('google-maps-api-script');
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.id = 'google-maps-api-script';
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => renderMapWithDirections();
+        script.onerror = () => {
+          if (isMounted) {
+            setLoadError(true);
+            setIsLoading(false);
+          }
+        };
+        document.head.appendChild(script);
+      } else {
+        existingScript.addEventListener('load', renderMapWithDirections);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [dest, colombo]);
+
+  if (loadError) {
+    return null; // Signals parent to render SVG fallback
+  }
+
+  return (
+    <div style={{position: 'relative', width: '100%', height: '340px', borderRadius: '14px', overflow: 'hidden'}}>
+      {isLoading && (
+        <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090d16', zIndex: 5, color: '#38bdf8', fontSize: '13px', fontWeight: '700'}}>
+          🛰️ Calculating Real Road Navigation via Google Maps...
+        </div>
+      )}
+      <div ref={mapContainerRef} style={{width: '100%', height: '100%'}} />
+    </div>
+  );
+}
 
 const resolveProductImage = (url, name) => {
   if (url && url.startsWith('https://smartretailx-public-assets.s3.amazonaws.com/products/')) {
@@ -20,6 +179,11 @@ function App() {
   const [isSplashLoading, setIsSplashLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('shop');
   const [selectedCategory, setSelectedCategory] = useState('All');
+
+  // Delivery address & location tracking state
+  const [deliveryAddress, setDeliveryAddress] = useState('No. 45, Peradeniya Road');
+  const [deliveryCity, setDeliveryCity] = useState('Kandy');
+  const [deliveryPhone, setDeliveryPhone] = useState('+94 77 123 4567');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
@@ -40,6 +204,8 @@ function App() {
   const [checkoutState, setCheckoutState] = useState('idle'); // idle | processing | success
   const [lastPlacedOrder, setLastPlacedOrder] = useState(null);
   const [selectedOrderForTracking, setSelectedOrderForTracking] = useState(null);
+  const [mapEngineMode, setMapEngineMode] = useState('google'); // google | radar
+  const [liveRouteTelemetry, setLiveRouteTelemetry] = useState(null);
 
   // Credit Card Entry Form Modal state
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -290,11 +456,20 @@ function App() {
   useEffect(() => {
     if (selectedOrderForTracking) {
       const liveOrder = orders.find(o => o.id === selectedOrderForTracking.id);
-      if (liveOrder) {
+      if (liveOrder && liveOrder.status !== selectedOrderForTracking.status) {
         setSelectedOrderForTracking(liveOrder);
       }
     }
-  }, [orders]);
+  }, [orders, selectedOrderForTracking]);
+
+  // Periodic live poll for orders when on orders tab
+  useEffect(() => {
+    if (activeTab === 'orders' && token) {
+      fetchOrders();
+      const interval = setInterval(fetchOrders, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, token]);
 
   const fetchHeaders = () => {
     const headers = { 'Content-Type': 'application/json' };
@@ -526,11 +701,26 @@ function App() {
       return [...prev, {
         product_id: product.id,
         product_name: product.name,
+        description: product.description || '',
+        image_url: product.image_url || '',
+        category: product.category || 'General',
         price: product.price,
         quantity: 1
       }];
     });
     addLog(`Added to cart: "${product.name}"`, "info");
+  };
+
+  const updateCartQuantity = (productId, delta) => {
+    setCart(prev => {
+      return prev.map(item => {
+        if (item.product_id === productId) {
+          const newQty = item.quantity + delta;
+          return newQty > 0 ? { ...item, quantity: newQty } : null;
+        }
+        return item;
+      }).filter(Boolean);
+    });
   };
 
   const removeFromCart = (productId) => {
@@ -615,7 +805,11 @@ function App() {
       const orderRes = await gatewayFetch('/orders', {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify({ items: itemsToSend })
+        body: JSON.stringify({ 
+          items: itemsToSend,
+          shipping_address: `${deliveryAddress}, ${deliveryCity}`,
+          city: deliveryCity
+        })
       });
 
       
@@ -1110,30 +1304,111 @@ function App() {
                   <button className="btn-primary" onClick={() => setActiveTab('shop')} style={{marginTop: '20px'}}>Go Shopping</button>
                 </div>
               ) : (
-                <div className="cart-table-wrapper">
-                  {cart.map(item => (
-                    <div className="cart-row" key={item.product_id}>
-                      <div className="cart-row-details">
-                        <span className="cart-row-name">{item.product_name}</span>
-                        <span className="cart-row-price">{item.quantity} × ${item.price.toFixed(2)}</span>
-                      </div>
-                      <div style={{display: 'flex', alignItems: 'center', gap: '24px'}}>
-                        <span style={{fontWeight: '800', fontSize: '18px'}}>${(item.quantity * item.price).toFixed(2)}</span>
-                        <button className="btn-accent" onClick={() => removeFromCart(item.product_id)}>Remove</button>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
+                  {/* Cart Items List */}
+                  <div style={{display: 'flex', flexDirection: 'column', gap: '14px'}}>
+                    {cart.map(item => {
+                      const matchedProd = products.find(p => p.id === item.product_id || p.name?.toLowerCase() === item.product_name?.toLowerCase());
+                      const itemImg = matchedProd?.image_url || item.image_url || `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80`;
+                      const itemDesc = matchedProd?.description || item.description || "High-grade certified consumer product dispatched directly from Colombo Central Logistics Hub.";
+                      const itemCat = matchedProd?.category || item.category || "General";
+                      const itemPrice = item.price || matchedProd?.price || 0;
+
+                      return (
+                        <div 
+                          key={item.product_id} 
+                          className="auth-box"
+                          style={{
+                            margin: '0', 
+                            maxWidth: '100%', 
+                            background: 'var(--bg-card)', 
+                            border: '1px solid var(--border-color)', 
+                            borderRadius: '16px', 
+                            padding: '16px 20px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '20px', 
+                            boxShadow: 'var(--shadow-sm)',
+                            flexWrap: 'wrap'
+                          }}
+                        >
+                          {/* Product Image */}
+                          <div style={{width: '90px', height: '90px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border-color)', background: '#fff'}}>
+                            <img 
+                              src={resolveProductImage(itemImg, item.product_name)} 
+                              alt={item.product_name} 
+                              style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                              onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80'; }}
+                            />
+                          </div>
+
+                          {/* Product Details & Description */}
+                          <div style={{flex: 1, minWidth: '240px'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'}}>
+                              <span style={{fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)'}}>{item.product_name}</span>
+                              <span style={{fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px', background: 'var(--primary-glow)', color: 'var(--primary)'}}>{itemCat}</span>
+                            </div>
+                            <p style={{fontSize: '12.5px', color: 'var(--text-secondary)', margin: '6px 0 0', lineHeight: '1.4'}}>
+                              {itemDesc}
+                            </p>
+                            <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px'}}>
+                              Unit Price: <strong>${itemPrice.toFixed(2)}</strong>
+                            </div>
+                          </div>
+
+                          {/* Quantity Stepper Controls */}
+                          <div style={{display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--neutral-light)', padding: '6px 10px', borderRadius: '10px', border: '1px solid var(--border-color)'}}>
+                            <button 
+                              onClick={() => updateCartQuantity(item.product_id, -1)} 
+                              style={{width: '28px', height: '28px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center'}}
+                            >
+                              -
+                            </button>
+                            <span style={{fontWeight: '800', minWidth: '24px', textAlign: 'center', fontSize: '14px'}}>{item.quantity}</span>
+                            <button 
+                              onClick={() => updateCartQuantity(item.product_id, 1)} 
+                              style={{width: '28px', height: '28px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center'}}
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          {/* Line Item Total */}
+                          <div style={{textAlign: 'right', minWidth: '90px'}}>
+                            <div style={{fontSize: '18px', fontWeight: '900', color: 'var(--text-primary)'}}>
+                              ${(item.quantity * itemPrice).toFixed(2)}
+                            </div>
+                          </div>
+
+                          {/* Remove Action */}
+                          <button 
+                            className="btn-accent" 
+                            onClick={() => removeFromCart(item.product_id)} 
+                            style={{padding: '8px 12px', fontSize: '12px', borderRadius: '10px'}}
+                            title="Remove from Cart"
+                          >
+                            ✕ Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Cart Total & Checkout Actions Bar */}
+                  <div className="auth-box" style={{margin: '0', maxWidth: '100%', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', boxShadow: 'var(--shadow-md)'}}>
+                    <div>
+                      <div style={{color: 'var(--text-muted)', fontSize: '12px', textTransform: 'uppercase', fontWeight: '700'}}>Cart Total ({cart.reduce((s, i) => s + i.quantity, 0)} items)</div>
+                      <div style={{fontSize: '26px', fontWeight: '900', color: 'var(--primary)', marginTop: '2px'}}>
+                        ${cart.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}
                       </div>
                     </div>
-                  ))}
-                  
-                  <div className="cart-summary-section">
-                    <span style={{fontWeight: '700', fontSize: '18px'}}>Total Order Amount:</span>
-                    <span className="cart-grand-total">
-                      ${cart.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}
-                    </span>
-                  </div>
 
-                  <div style={{marginTop: '24px', display: 'flex', gap: '16px', justifyContent: 'flex-end'}}>
-                    <button className="btn-secondary" onClick={() => setCart([])}>Clear Cart</button>
-                    <button className="btn-primary" onClick={startCheckoutFlow}>Proceed to Checkout</button>
+                    <div style={{display: 'flex', gap: '12px'}}>
+                      <button className="btn-secondary" onClick={() => setCart([])} style={{padding: '12px 20px'}}>Clear Cart</button>
+                      <button className="btn-primary" onClick={startCheckoutFlow} style={{padding: '12px 28px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                        Proceed to Checkout 💳
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1151,43 +1426,157 @@ function App() {
               ) : orders.length === 0 ? (
                 <p style={{color: 'var(--text-secondary)'}}>No orders found.</p>
               ) : (
-                <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
-                  <table className="orders-table">
-                    <thead>
-                      <tr>
-                        <th>Order ID</th>
-                        <th>Total Amount</th>
-                        <th>Created At</th>
-                        <th>Status</th>
-                        <th>Tracking</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orders.map(o => (
-                        <tr key={o.id}>
-                          <td><strong>#{o.id.substring(o.id.length - 8)}</strong></td>
-                          <td>${o.total_amount.toFixed(2)}</td>
-                          <td>{new Date(o.created_at).toLocaleString()}</td>
-                          <td>
-                            <span className={`status-badge ${o.status.toLowerCase()}`}>
-                              {o.status}
+                <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
+                  {orders.map(o => (
+                    <div 
+                      key={o.id} 
+                      className="auth-box" 
+                      style={{
+                        margin: '0', 
+                        maxWidth: '100%', 
+                        background: 'var(--bg-card)', 
+                        border: selectedOrderForTracking?.id === o.id ? '2px solid var(--primary)' : '1px solid var(--border-color)', 
+                        borderRadius: '16px', 
+                        padding: '20px', 
+                        boxShadow: 'var(--shadow-md)',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {/* Order Header Summary */}
+                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px', marginBottom: '16px'}}>
+                        <div>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                            <span style={{fontSize: '18px', fontWeight: '800', fontFamily: 'monospace', color: 'var(--primary)'}}>
+                              #{o.id.substring(o.id.length - 8).toUpperCase()}
                             </span>
-                          </td>
-                          <td>
-                            <button className="btn-secondary" onClick={() => setSelectedOrderForTracking(o)} style={{padding: '4px 10px', fontSize: '11px'}}>
-                              Track Status 🚚
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            <span className={`status-badge ${o.status.toLowerCase()}`}>
+                              {o.status === 'Paid' ? '✓ Paid & In Transit' : o.status}
+                            </span>
+                          </div>
+                          <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px'}}>
+                            📅 Placed on {new Date(o.created_at).toLocaleString()} · 📍 Delivery Destination: <strong style={{color: 'var(--text-primary)'}}>{o.shipping_address || `${o.city || 'Colombo'}, Sri Lanka`}</strong>
+                          </div>
+                        </div>
 
-                  {/* Dynamic Visual Stepper Timeline for Order Tracking - BACKED BY LIVE DB STATUS */}
+                        <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
+                          <div style={{textAlign: 'right'}}>
+                            <div style={{fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700'}}>Total Paid</div>
+                            <div style={{fontSize: '20px', fontWeight: '900', color: 'var(--text-primary)'}}>${o.total_amount.toFixed(2)}</div>
+                          </div>
+                          <button 
+                            className="btn-primary" 
+                            onClick={() => setSelectedOrderForTracking(o)} 
+                            style={{padding: '8px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px'}}
+                          >
+                            Track Status 🚚
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Purchased Items List: Photo, Title, Description, & Price */}
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
+                        <div style={{fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+                          Items in this Order ({o.items?.length || 0})
+                        </div>
+
+                        {o.items && o.items.length > 0 ? (
+                          o.items.map((item, idx) => {
+                            const matchedProd = products.find(p => p.id === item.product_id || p.name?.toLowerCase() === item.product_name?.toLowerCase());
+                            const itemImage = matchedProd?.image_url || `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80`;
+                            const itemDesc = matchedProd?.description || "High-grade certified consumer product dispatched directly from Colombo Central Logistics Hub.";
+                            const itemCat = matchedProd?.category || "General";
+                            const itemPrice = item.price || matchedProd?.price || 0;
+                            const itemQty = item.quantity || 1;
+
+                            return (
+                              <div key={idx} style={{display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--neutral-light)', padding: '12px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', flexWrap: 'wrap'}}>
+                                {/* Product Image */}
+                                <div style={{width: '74px', height: '74px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border-color)', background: '#fff'}}>
+                                  <img 
+                                    src={resolveProductImage(itemImage, item.product_name)} 
+                                    alt={item.product_name} 
+                                    style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                                    onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80'; }}
+                                  />
+                                </div>
+
+                                {/* Product Title & Description */}
+                                <div style={{flex: 1, minWidth: '220px'}}>
+                                  <div style={{display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'}}>
+                                    <span style={{fontSize: '14px', fontWeight: '800', color: 'var(--text-primary)'}}>{item.product_name || matchedProd?.name}</span>
+                                    <span style={{fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px', background: 'var(--primary-glow)', color: 'var(--primary)'}}>{itemCat}</span>
+                                  </div>
+                                  <p style={{fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0', lineHeight: '1.4'}}>
+                                    {itemDesc}
+                                  </p>
+                                </div>
+
+                                {/* Pricing Breakdown */}
+                                <div style={{textAlign: 'right', minWidth: '100px'}}>
+                                  <div style={{fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)'}}>
+                                    ${(itemPrice * itemQty).toFixed(2)}
+                                  </div>
+                                  <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>
+                                    ${itemPrice.toFixed(2)} × {itemQty} {itemQty > 1 ? 'units' : 'unit'}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>Package details securely archived.</p>
+                        )}
+                      </div>
+
+                    </div>
+                  ))}
+
+                  {/* Dynamic Visual Stepper Timeline & Live Road Map for Selected Order */}
                   {selectedOrderForTracking && (
-                    <div style={{border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px', background: '#f8fafc', marginTop: '20px'}}>
-                      <h4 style={{fontSize: '16px', marginBottom: '16px'}}>Live Tracking Timeline for Order <strong>#{selectedOrderForTracking.id}</strong></h4>
+                    <div style={{border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px', background: '#f8fafc', marginTop: '10px'}}>
                       
+                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px'}}>
+                        <h4 style={{fontSize: '16px', margin: 0}}>
+                          Live Tracking Telemetry for Order <strong style={{color: 'var(--primary)'}}>#{selectedOrderForTracking.id}</strong>
+                        </h4>
+                        <button 
+                          className="btn-secondary" 
+                          onClick={() => setSelectedOrderForTracking(null)}
+                          style={{padding: '4px 10px', fontSize: '11px'}}
+                        >
+                          ✕ Close Tracker
+                        </button>
+                      </div>
+                      
+                      {/* Items in this tracked package preview */}
+                      {selectedOrderForTracking.items && selectedOrderForTracking.items.length > 0 && (
+                        <div style={{background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '14px', marginBottom: '20px'}}>
+                          <div style={{fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.5px'}}>
+                            📦 Items in this Package
+                          </div>
+                          <div style={{display: 'flex', gap: '12px', flexWrap: 'wrap'}}>
+                            {selectedOrderForTracking.items.map((item, idx) => {
+                              const prod = products.find(p => p.id === item.product_id || p.name?.toLowerCase() === item.product_name?.toLowerCase());
+                              const img = prod?.image_url || `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80`;
+                              return (
+                                <div key={idx} style={{display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--neutral-light)', padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--border-color)'}}>
+                                  <img 
+                                    src={resolveProductImage(img, item.product_name)} 
+                                    alt="" 
+                                    style={{width: '40px', height: '40px', objectFit: 'cover', borderRadius: '6px'}} 
+                                    onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80'; }}
+                                  />
+                                  <div>
+                                    <div style={{fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)'}}>{item.product_name || prod?.name}</div>
+                                    <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>${(item.price || prod?.price || 0).toFixed(2)} × {item.quantity || 1}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', padding: '10px 0'}}>
                         <div style={{position: 'absolute', left: '12.5%', right: '12.5%', height: '4px', backgroundColor: '#e2e8f0', zIndex: '1', top: '22px'}}>
                           <div style={{
@@ -1244,6 +1633,236 @@ function App() {
                           </span>
                         </div>
                       </div>
+
+                      {/* ------------------------------------------------------------
+                          LIVE SATELLITE GPS MAP & RED ROUTE TELEMETRY (COLOMBO -> DEST)
+                          ------------------------------------------------------------ */}
+                      {(() => {
+                        const rawCity = selectedOrderForTracking.city || 'Kandy';
+                        const matchedKey = Object.keys(SRI_LANKA_CITIES).find(k => k.toLowerCase() === rawCity.toLowerCase()) || 'Kandy';
+                        const dest = SRI_LANKA_CITIES[matchedKey] || SRI_LANKA_CITIES['Kandy'];
+                        const colombo = SRI_LANKA_CITIES['Colombo'];
+                        const midX = (colombo.x + dest.x) / 2;
+                        const midY = (colombo.y + dest.y) / 2;
+
+                        return (
+                          <div className="live-map-wrapper" style={{marginTop: '24px', padding: '20px', color: 'white'}}>
+                            
+                            {/* Live GPS Header Bar */}
+                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '14px', marginBottom: '16px'}}>
+                              <div>
+                                <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                  <span style={{display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 10px #ef4444'}}></span>
+                                  <h3 style={{fontSize: '15px', fontWeight: '800', letterSpacing: '0.5px', margin: 0, color: '#f8fafc'}}>
+                                    LIVE GPS DISPATCH ROUTE & REAL-TIME ROAD TRACKER
+                                  </h3>
+                                </div>
+                                <p style={{fontSize: '12px', color: '#94a3b8', margin: '4px 0 0'}}>
+                                  Tracking Package ID: <span style={{fontFamily: 'monospace', color: '#38bdf8', fontWeight: '700'}}>#{selectedOrderForTracking.id}</span>
+                                </p>
+                              </div>
+
+                              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                <button
+                                  type="button"
+                                  onClick={() => setMapEngineMode('google')}
+                                  style={{background: mapEngineMode === 'google' ? 'linear-gradient(135deg, #ef4444, #b91c1c)' : 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s'}}
+                                >
+                                  🛰️ Google Real Road Map
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setMapEngineMode('radar')}
+                                  style={{background: mapEngineMode === 'radar' ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)' : 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s'}}
+                                >
+                                  📡 Radar Vector
+                                </button>
+                                <span style={{background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', color: '#fca5a5', padding: '4px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                  <span style={{width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444'}}></span>
+                                  LIVE GPS
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Map & Telemetry HUD Grid */}
+                            <div style={{display: 'grid', gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(280px, 1fr)', gap: '20px', alignItems: 'center'}}>
+                              
+                              {/* Left Column: Interactive Map with Red Road Route */}
+                              <div style={{position: 'relative', background: '#090d16', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '8px', overflow: 'hidden', minHeight: '340px', display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
+                                
+                                {mapEngineMode === 'google' ? (
+                                  <GoogleRoadMap 
+                                    dest={dest} 
+                                    colombo={colombo} 
+                                    onRouteComputed={(telemetry) => setLiveRouteTelemetry(telemetry)} 
+                                  />
+                                ) : null}
+
+                                {(mapEngineMode === 'radar' || !GOOGLE_MAPS_API_KEY) && (
+                                  <svg viewBox="0 0 450 500" style={{width: '100%', height: '340px', maxWidth: '420px', zIndex: 2}}>
+                                    <defs>
+                                      <filter id="redLaserGlow" x="-20%" y="-20%" width="140%" height="140%">
+                                        <feGaussianBlur stdDeviation="3" result="blur" />
+                                        <feMerge>
+                                          <feMergeNode in="blur" />
+                                          <feMergeNode in="SourceGraphic" />
+                                        </feMerge>
+                                      </filter>
+                                      <filter id="hubGreenGlow" x="-30%" y="-30%" width="160%" height="160%">
+                                        <feGaussianBlur stdDeviation="4" result="blur" />
+                                        <feMerge>
+                                          <feMergeNode in="blur" />
+                                          <feMergeNode in="SourceGraphic" />
+                                        </feMerge>
+                                      </filter>
+                                      <linearGradient id="laserGrad" x1={colombo.x} y1={colombo.y} x2={dest.x} y2={dest.y} gradientUnits="userSpaceOnUse">
+                                        <stop offset="0%" stopColor="#10b981" />
+                                        <stop offset="30%" stopColor="#ef4444" />
+                                        <stop offset="100%" stopColor="#dc2626" />
+                                      </linearGradient>
+                                    </defs>
+
+                                    {/* Sri Lanka Land Contour Silhouette */}
+                                    <path 
+                                      d="M 140,30 C 160,25 200,60 215,90 C 230,120 310,110 320,135 C 330,160 360,200 375,225 C 390,250 370,300 340,330 C 310,360 275,410 245,460 C 215,510 185,475 160,450 C 135,425 125,370 120,330 C 115,290 105,260 120,220 C 135,180 120,130 115,90 Z" 
+                                      fill="#131c2e" 
+                                      stroke="#1e293b" 
+                                      strokeWidth="2" 
+                                    />
+
+                                    {/* All Reference Hub Dots on Map */}
+                                    {Object.keys(SRI_LANKA_CITIES).map(cityName => {
+                                      const c = SRI_LANKA_CITIES[cityName];
+                                      const isTarget = cityName === matchedKey;
+                                      const isOrigin = cityName === 'Colombo';
+                                      if (isTarget || isOrigin) return null;
+                                      return (
+                                        <g key={cityName} opacity="0.45">
+                                          <circle cx={c.x} cy={c.y} r="3" fill="#64748b" />
+                                          <text x={c.x + 6} y={c.y + 3} fill="#94a3b8" fontSize="8" fontFamily="sans-serif">{cityName}</text>
+                                        </g>
+                                      );
+                                    })}
+
+                                    {/* THE GLOWING RED DELIVERY ROUTE LINE (COLOMBO -> DESTINATION) */}
+                                    <line 
+                                      x1={colombo.x} 
+                                      y1={colombo.y} 
+                                      x2={dest.x} 
+                                      y2={dest.y} 
+                                      stroke="#ef4444" 
+                                      strokeWidth="6" 
+                                      strokeOpacity="0.4"
+                                      strokeLinecap="round"
+                                      filter="url(#redLaserGlow)"
+                                    />
+                                    <line 
+                                      x1={colombo.x} 
+                                      y1={colombo.y} 
+                                      x2={dest.x} 
+                                      y2={dest.y} 
+                                      stroke="url(#laserGrad)" 
+                                      strokeWidth="3.5" 
+                                      strokeLinecap="round"
+                                      className="map-red-laser-line"
+                                      filter="url(#redLaserGlow)"
+                                    />
+
+                                    {/* Moving Courier Truck Marker */}
+                                    <g transform={`translate(${midX - 10}, ${midY - 10})`}>
+                                      <circle cx="10" cy="10" r="14" fill="rgba(239, 68, 68, 0.25)" />
+                                      <circle cx="10" cy="10" r="9" fill="#ef4444" />
+                                      <text x="5" y="14" fontSize="11" fill="white">🚚</text>
+                                    </g>
+
+                                    {/* START POINT: COLOMBO HUB PIN */}
+                                    <g transform={`translate(${colombo.x}, ${colombo.y})`} className="gps-hub-pin">
+                                      <circle cx="0" cy="0" r="8" fill="rgba(16, 185, 129, 0.3)" />
+                                      <circle cx="0" cy="0" r="5" fill="#10b981" filter="url(#hubGreenGlow)" />
+                                      <text x="-48" y="-10" fill="#10b981" fontSize="9" fontWeight="bold" fontFamily="sans-serif">📍 Colombo Hub</text>
+                                    </g>
+
+                                    {/* END POINT: DESTINATION CITY PIN */}
+                                    <g transform={`translate(${dest.x}, ${dest.y})`} className="gps-dest-pin">
+                                      <circle cx="0" cy="0" r="10" fill="rgba(239, 68, 68, 0.3)" />
+                                      <circle cx="0" cy="0" r="6" fill="#ef4444" filter="url(#redLaserGlow)" />
+                                      <text x="8" y="3" fill="#fca5a5" fontSize="10" fontWeight="bold" fontFamily="sans-serif">🏁 {dest.name}</text>
+                                    </g>
+                                  </svg>
+                                )}
+                              </div>
+
+                              {/* Right Column: Live GPS Route Details & Telemetry Cards */}
+                              <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
+                                
+                                {/* Origin & Destination Card */}
+                                <div style={{background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px'}}>
+                                  <div style={{display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '10px'}}>
+                                    <span style={{fontSize: '18px'}}>🟢</span>
+                                    <div>
+                                      <div style={{color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700'}}>Origin Startpoint</div>
+                                      <div style={{color: 'white', fontWeight: '700', fontSize: '13px'}}>Colombo Central Logistics Hub (Dock #4)</div>
+                                      <div style={{color: '#64748b', fontSize: '11px'}}>GPS: 6.9271° N, 79.8612° E</div>
+                                    </div>
+                                  </div>
+
+                                  <div style={{width: '2px', height: '14px', background: '#ef4444', margin: '-4px 0 6px 9px'}}></div>
+
+                                  <div style={{display: 'flex', alignItems: 'flex-start', gap: '10px'}}>
+                                    <span style={{fontSize: '18px'}}>🔴</span>
+                                    <div>
+                                      <div style={{color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700'}}>Delivery Destination (Endpoint)</div>
+                                      <div style={{color: '#f8fafc', fontWeight: '700', fontSize: '13px'}}>{selectedOrderForTracking.shipping_address || 'No. 45, Galle Road'}</div>
+                                      <div style={{color: '#38bdf8', fontSize: '12px', fontWeight: '600'}}>{dest.name} ({dest.hub})</div>
+                                      <div style={{color: '#64748b', fontSize: '11px'}}>GPS: {dest.lat}° N, {dest.lng}° E</div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Distance & ETA Telemetry Grid */}
+                                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
+                                  <div style={{background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '10px 12px'}}>
+                                    <div style={{color: '#94a3b8', fontSize: '11px', fontWeight: '700'}}>Total Road Distance</div>
+                                    <div style={{fontSize: '18px', fontWeight: '800', color: '#f59e0b', marginTop: '2px'}}>
+                                      {liveRouteTelemetry?.distance || `${dest.distance} km`}
+                                    </div>
+                                    <div style={{fontSize: '10px', color: '#64748b'}}>Google Directions API</div>
+                                  </div>
+
+                                  <div style={{background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '10px 12px'}}>
+                                    <div style={{color: '#94a3b8', fontSize: '11px', fontWeight: '700'}}>Transit ETA</div>
+                                    <div style={{fontSize: '18px', fontWeight: '800', color: '#10b981', marginTop: '2px'}}>
+                                      {liveRouteTelemetry?.duration || dest.time}
+                                    </div>
+                                    <div style={{fontSize: '10px', color: '#64748b'}}>Live Traffic Synced</div>
+                                  </div>
+                                </div>
+
+                                {/* Vehicle & Dispatch Telemetry Card */}
+                                <div style={{background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '12px', fontSize: '12px'}}>
+                                  <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
+                                    <span style={{color: '#94a3b8'}}>Express Carrier:</span>
+                                    <span style={{color: 'white', fontWeight: '700'}}>SmartRetailX Fleet Van #08</span>
+                                  </div>
+                                  <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px'}}>
+                                    <span style={{color: '#94a3b8'}}>Live Velocity:</span>
+                                    <span style={{color: '#38bdf8', fontWeight: '700'}}>58 km/h (Optimal Cruise)</span>
+                                  </div>
+                                  <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                                    <span style={{color: '#94a3b8'}}>Delivery Status:</span>
+                                    <span style={{color: '#10b981', fontWeight: '700'}}>
+                                      {selectedOrderForTracking.status === 'Paid' || selectedOrderForTracking.status === 'success' 
+                                        ? `🚚 En Route to ${dest.name}` 
+                                        : '⏳ Processing Hub Release...'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -2016,10 +2635,10 @@ function App() {
          Modal Screen: Credit Card payment form details
          ---------------------------------------------------- */}
       {showPaymentForm && (
-        <div className="modal-overlay" onClick={() => setShowPaymentForm(false)} style={{backdropFilter: 'blur(16px)', background: 'rgba(0,0,0,0.75)'}}>
-          <div onClick={e => e.stopPropagation()} style={{background: 'linear-gradient(160deg, #0f0c29 0%, #1a1040 50%, #0d1b2a 100%)', borderRadius: '28px', maxWidth: '480px', width: '90%', padding: '0', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08)', position: 'relative'}}>
+        <div className="modal-overlay" onClick={() => setShowPaymentForm(false)} style={{backdropFilter: 'blur(16px)', background: 'rgba(0,0,0,0.75)', overflowY: 'auto', padding: '24px 12px'}}>
+          <div onClick={e => e.stopPropagation()} style={{background: 'linear-gradient(160deg, #0f0c29 0%, #1a1040 50%, #0d1b2a 100%)', borderRadius: '28px', maxWidth: '480px', width: '100%', margin: 'auto', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08)', position: 'relative', display: 'flex', flexDirection: 'column'}}>
             {/* Glowing top bar */}
-            <div style={{height: '4px', background: 'linear-gradient(90deg, #7c3aed, #06b6d4, #10b981)', width: '100%'}} />
+            <div style={{height: '4px', background: 'linear-gradient(90deg, #7c3aed, #06b6d4, #10b981)', width: '100%', flexShrink: 0}} />
             
             {/* Header */}
             <div style={{padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
@@ -2084,6 +2703,54 @@ function App() {
             )}
 
             <form onSubmit={checkoutCart} style={{padding: '16px 28px 28px', display: 'flex', flexDirection: 'column', gap: '14px'}}>
+              
+              {/* Delivery Address & Sri Lanka City Selection */}
+              <div style={{background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', marginBottom: '4px'}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px'}}>
+                  <span style={{fontSize: '16px'}}>📍</span>
+                  <span style={{color: '#38bdf8', fontSize: '12px', fontWeight: '800', letterSpacing: '0.5px', textTransform: 'uppercase'}}>Delivery Destination (Sri Lanka)</span>
+                </div>
+                
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
+                  <div>
+                    <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', display: 'block', marginBottom: '4px'}}>Destination City</label>
+                    <select
+                      value={deliveryCity}
+                      onChange={e => setDeliveryCity(e.target.value)}
+                      style={{width: '100%', background: '#1e293b', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '10px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box'}}
+                    >
+                      {Object.keys(SRI_LANKA_CITIES).map(c => (
+                        <option key={c} value={c} style={{background: '#0f172a', color: 'white'}}>
+                          {c} ({SRI_LANKA_CITIES[c].distance} km from Colombo)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', display: 'block', marginBottom: '4px'}}>Contact Phone</label>
+                    <input
+                      type="text"
+                      placeholder="+94 77 123 4567"
+                      value={deliveryPhone}
+                      onChange={e => setDeliveryPhone(e.target.value)}
+                      style={{width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '10px 12px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box'}}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', display: 'block', marginBottom: '4px'}}>Street / House Delivery Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. No. 72/A, Peradeniya Road"
+                    value={deliveryAddress}
+                    onChange={e => setDeliveryAddress(e.target.value)}
+                    required
+                    style={{width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '10px 12px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box'}}
+                  />
+                </div>
+              </div>
+
               <div>
                 <label style={{color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '6px'}}>Cardholder Name</label>
                 <input

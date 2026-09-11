@@ -593,6 +593,20 @@ body {
   justify-content: center;
   z-index: 1000;
   animation: fadeIn 0.3s ease;
+  overflow-y: auto;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.modal-overlay::-webkit-scrollbar {
+  width: 6px;
+}
+.modal-overlay::-webkit-scrollbar-track {
+  background: transparent;
+}
+.modal-overlay::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
 .product-detail-modal {
@@ -1441,6 +1455,60 @@ body {
 .trace-log-row:active {
   background-color: #ddd6fe !important;
 }
+
+/* ============================================================
+   Live GPS Delivery Map & Red Route Line Styling
+   ============================================================ */
+@keyframes redRouteLaserPulse {
+  0% {
+    stroke-dashoffset: 40;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes mapPinPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.6));
+  }
+  50% {
+    transform: scale(1.18);
+    filter: drop-shadow(0 0 16px rgba(239, 68, 68, 0.9));
+  }
+}
+
+@keyframes hubPinGlow {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.6));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.95));
+  }
+}
+
+.map-red-laser-line {
+  stroke-dasharray: 8 6;
+  animation: redRouteLaserPulse 1.2s linear infinite;
+}
+
+.gps-dest-pin {
+  animation: mapPinPulse 1.8s ease-in-out infinite;
+}
+
+.gps-hub-pin {
+  animation: hubPinGlow 2s ease-in-out infinite;
+}
+
+.live-map-wrapper {
+  background: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
 
 
 

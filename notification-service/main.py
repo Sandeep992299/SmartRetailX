@@ -95,7 +95,7 @@ def generate_daily_order_pdf(orders_list: List[Dict[str, Any]]) -> bytes:
 def send_ses_email_with_attachment(subject: str, html_body: str, attachment_data: bytes, attachment_name: str, recipient: str = None):
     """Sends a raw MIME email with a binary PDF attachment using Amazon SES."""
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-    sender = os.getenv("SES_SENDER_EMAIL", "alerts@smartretailx.com")
+    sender = os.getenv("SES_SENDER_EMAIL", "dissanayakesandeep@gmail.com")
     if not recipient:
         recipient = os.getenv("SES_RECIPIENT_EMAIL", "dissanayakesandeep@gmail.com")
         
@@ -220,20 +220,208 @@ def get_styled_email_template(title: str, alert_type: str, details_html: str, ct
 """
     return html
 
+def generate_order_receipt_html(order_id: str, user_email: str, total: float, items: list, shipping_address: str = None, city: str = None, delivery_status: str = None) -> str:
+    """Builds a high-converting, visually stunning HTML order receipt email with product images, badges, and delivery tracking."""
+    storefront_url = "http://acf2c1e42f71e4b2db6d48e48e03c6e2-415335565.us-east-1.elb.amazonaws.com"
+    date_str = datetime.utcnow().strftime("%B %d, %Y · %I:%M %p UTC")
+    
+    items_html = ""
+    subtotal = 0.0
+    for itm in items:
+        p_name = itm.get("product_name", "Smart Retail Item")
+        p_qty = int(itm.get("quantity", 1))
+        p_price = float(itm.get("price", 0.0))
+        p_img = itm.get("image_url") or "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300&q=80"
+        p_cat = itm.get("category", "General")
+        p_desc = itm.get("description", "")
+        line_total = p_price * p_qty
+        subtotal += line_total
+        
+        desc_snippet = f'<div style="font-size: 12px; color: #64748b; margin-top: 3px; line-height: 1.4;">{p_desc[:65]}...</div>' if p_desc else ''
+        
+        items_html += f"""
+        <tr>
+            <td style="padding: 16px 0; border-bottom: 1px solid #f1f5f9;">
+                <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td width="72" valign="top" style="padding-right: 16px;">
+                            <img src="{p_img}" alt="{p_name}" width="72" height="72" style="border-radius: 12px; object-fit: cover; display: block; border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.06);" />
+                        </td>
+                        <td valign="top">
+                            <div style="margin-bottom: 4px;">
+                                <span style="background: #ede9fe; color: #6d28d9; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; display: inline-block;">
+                                    {p_cat}
+                                </span>
+                            </div>
+                            <div style="font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3;">{p_name}</div>
+                            {desc_snippet}
+                            <div style="font-size: 13px; color: #64748b; margin-top: 6px;">
+                                <span style="color: #475569; font-weight: 600;">Qty:</span> {p_qty} &nbsp;·&nbsp; 
+                                <span style="color: #475569; font-weight: 600;">Unit:</span> ${p_price:.2f}
+                            </div>
+                        </td>
+                        <td width="90" valign="middle" align="right" style="padding-left: 10px;">
+                            <div style="font-size: 16px; font-weight: 800; color: #0f172a;">${line_total:.2f}</div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        """
+        
+    if subtotal == 0:
+        subtotal = total
+
+    shipping_display = shipping_address if shipping_address else "No. 45, Galle Road, Colombo 03"
+    city_display = city if city else "Colombo"
+    
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartRetailX Order Confirmation</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #0f172a; padding: 30px 15px;">
+        <tr>
+            <td align="center">
+                <!-- Main Container Card -->
+                <table width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width: 620px; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);">
+                    
+                    <!-- Top Gradient Header Bar -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); padding: 35px 35px 30px; text-align: center;">
+                            <div style="display: inline-block; background: rgba(255, 255, 255, 0.12); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.2); padding: 5px 14px; border-radius: 20px; margin-bottom: 16px;">
+                                <span style="color: #a78bfa; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">✨ SmartRetailX Enterprise Store</span>
+                            </div>
+                            <h1 style="color: #ffffff; font-size: 26px; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.5px;">
+                                Order Confirmed! 🎉
+                            </h1>
+                            <p style="color: rgba(255, 255, 255, 0.75); font-size: 14px; margin: 0 auto; max-width: 440px; line-height: 1.5;">
+                                Thank you for your purchase. We have received your order and payment has been verified.
+                            </p>
+                            
+                            <!-- Order Quick Badge Strip -->
+                            <table width="100%" border="0" cellpadding="0" cellspacing="0" style="margin-top: 24px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 14px;">
+                                <tr>
+                                    <td align="left" style="color: rgba(255, 255, 255, 0.7); font-size: 12px;">
+                                        <div>ORDER ID:</div>
+                                        <div style="color: #ffffff; font-weight: 800; font-family: monospace; font-size: 15px; margin-top: 2px;">#{order_id}</div>
+                                    </td>
+                                    <td align="right" style="color: rgba(255, 255, 255, 0.7); font-size: 12px;">
+                                        <div>TOTAL PAID:</div>
+                                        <div style="color: #38bdf8; font-weight: 900; font-size: 20px; margin-top: 2px;">${total:.2f}</div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Live Delivery & Telemetry Card -->
+                    <tr>
+                        <td style="padding: 24px 35px 0;">
+                            <div style="background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); border: 1px solid #dbeafe; border-radius: 14px; padding: 18px 20px;">
+                                <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td width="36" valign="top" style="padding-right: 12px;">
+                                            <div style="width: 36px; height: 36px; background: #3b82f6; border-radius: 10px; text-align: center; line-height: 36px; font-size: 18px;">🚚</div>
+                                        </td>
+                                        <td valign="top">
+                                            <div style="color: #1d4ed8; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase;">Live Road Dispatch Telemetry</div>
+                                            <div style="color: #0f172a; font-size: 14px; font-weight: 700; margin-top: 2px;">
+                                                Colombo Central Logistics Hub ➔ {city_display}
+                                            </div>
+                                            <div style="color: #475569; font-size: 12px; margin-top: 4px; line-height: 1.4;">
+                                                📍 <strong>Destination:</strong> {shipping_display}
+                                            </div>
+                                            <div style="color: #16a34a; font-size: 12px; font-weight: 600; margin-top: 4px;">
+                                                🟢 Status: In Transit with Real-time GPS Road Navigation
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Order Items List -->
+                    <tr>
+                        <td style="padding: 24px 35px 10px;">
+                            <div style="font-size: 13px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #475569; margin-bottom: 12px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">
+                                Ordered Items ({len(items)})
+                            </div>
+                            <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                                {items_html}
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Financial Breakdown Table -->
+                    <tr>
+                        <td style="padding: 10px 35px 24px;">
+                            <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background: #f8fafc; border-radius: 12px; padding: 18px 20px; border: 1px solid #e2e8f0;">
+                                <tr>
+                                    <td style="color: #64748b; font-size: 13px; padding-bottom: 8px;">Items Subtotal</td>
+                                    <td align="right" style="color: #1e293b; font-size: 13px; font-weight: 600; padding-bottom: 8px;">${subtotal:.2f}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #64748b; font-size: 13px; padding-bottom: 8px;">Sri Lanka Express Courier</td>
+                                    <td align="right" style="color: #16a34a; font-size: 13px; font-weight: 700; padding-bottom: 8px;">FREE (Promotion)</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #64748b; font-size: 13px; padding-bottom: 12px; border-bottom: 1px dashed #cbd5e1;">Payment Method</td>
+                                    <td align="right" style="color: #1e293b; font-size: 13px; font-weight: 600; padding-bottom: 12px; border-bottom: 1px dashed #cbd5e1;">Credit Card (Verified)</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #0f172a; font-size: 16px; font-weight: 800; padding-top: 12px;">Total Paid</td>
+                                    <td align="right" style="color: #7c3aed; font-size: 22px; font-weight: 900; padding-top: 12px;">${total:.2f}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Action Call to Action Buttons -->
+                    <tr>
+                        <td style="padding: 0 35px 35px; text-align: center;">
+                            <a href="{storefront_url}" target="_blank" style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); color: #ffffff; padding: 14px 28px; border-radius: 12px; font-size: 14px; font-weight: 800; text-decoration: none; display: inline-block; box-shadow: 0 8px 20px rgba(124, 58, 237, 0.35); margin-bottom: 10px;">
+                                🚚 Track Live GPS Road Navigation ➔
+                            </a>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
+                                Placed on {date_str}
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #0f172a; padding: 25px 35px; text-align: center; border-top: 1px solid #1e293b;">
+                            <div style="color: #e2e8f0; font-size: 13px; font-weight: 700; margin-bottom: 4px;">SmartRetailX Cloud Architecture</div>
+                            <div style="color: #64748b; font-size: 11px; line-height: 1.5; max-width: 460px; margin: 0 auto 12px;">
+                                ⚡ Powered by AWS EKS Microservices, Amazon SES, Amazon MSK Kafka, and Redis In-Memory Mesh.
+                            </div>
+                            <div style="color: #475569; font-size: 10px;">
+                                SmartRetailX Global Distribution · Colombo 01, Sri Lanka · © {datetime.utcnow().year} All Rights Reserved.
+                            </div>
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"""
+
 def send_ses_email(subject: str, html_body: str, recipient: str = None):
     """Sends a notification email via AWS SES if credentials and verified identities exist."""
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-    sender = os.getenv("SES_SENDER_EMAIL", "alerts@smartretailx.com")
+    sender = os.getenv("SES_SENDER_EMAIL", "dissanayakesandeep@gmail.com")
     if not recipient:
-        recipient = os.getenv("SES_RECIPIENT_EMAIL", "admin@smartretailx.com")
+        recipient = os.getenv("SES_RECIPIENT_EMAIL", "dissanayakesandeep@gmail.com")
         
     print(f"SES: Attempting to send email from '{sender}' to '{recipient}' (Subject: {subject})")
     
-    # Allow bypassing/mocking in non-AWS/local runs to avoid crashing on missing AWS creds
-    if os.getenv("AWS_ACCESS_KEY_ID") is None and os.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") is None:
-        print("SES: AWS credentials not found. Bypassing SES call (simulation fallback).")
-        return
-        
     try:
         client = boto3.client('ses', region_name=AWS_REGION)
         response = client.send_email(
@@ -674,6 +862,15 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+@app.post("/events")
+@app.post("/notify")
+async def receive_event(event: Dict[str, Any]):
+    """Receives event payloads via HTTP and enqueues them for real-time WebSocket broadcast & email dispatch."""
+    event_type = event.get("event_type", "unknown")
+    print(f"Notification Service HTTP event received: {event_type}")
+    await event_queue.put(event)
+    return {"status": "queued", "event_type": event_type}
+
 @app.get("/healthz")
 def healthz():
     return {"status": "healthy", "websockets_connected": len(manager.active_connections)}
@@ -788,6 +985,105 @@ async def queue_event_dispatcher():
                 )
                 send_ses_email(subject, html_body)
                 send_slack_webhook(f"🚨 *CRITICAL FRAUD BLOCKED* 🚨\nOrder #{order_id} flagged as *FRAUD* from IP `{ip_addr}`. Reason: {reason}")
+        elif event_type in ("order-created", "payment-settled", "order-settled"):
+            order_id = event_data.get("order_id", "N/A")
+            user_email = event_data.get("user_email", "customer@smartretailx.com")
+            total = float(event_data.get("total_amount", 0.0))
+            items = event_data.get("items", [])
+            shipping_addr = event_data.get("shipping_address", "No. 45, Galle Road, Colombo 03")
+            city = event_data.get("city", "Colombo")
+            delivery_status = event_data.get("delivery_status", f"In Transit to {city}")
+            
+            subject = f"🛍️ Order Confirmed: #{order_id} | Total: ${total:.2f} · SmartRetailX"
+            html_body = generate_order_receipt_html(
+                order_id=order_id,
+                user_email=user_email,
+                total=total,
+                items=items,
+                shipping_address=shipping_addr,
+                city=city,
+                delivery_status=delivery_status
+            )
+            recipient_email = os.getenv("SES_RECIPIENT_EMAIL", "dissanayakesandeep@gmail.com")
+            send_ses_email(subject, html_body, recipient=recipient_email)
+            send_slack_webhook(f"🛍️ *NEW ORDER CONFIRMED*: #{order_id} for ${total:.2f} by {user_email}")
+            
+        elif event_type == "daily-sales-report":
+            orders_list = event_data.get("orders", [
+                {"order_id": "ORD-77629", "user_id": "USR-10254", "total_amount": 948.99, "status": "Paid", "items": [{"product_id": "6aa01", "quantity": 1}, {"product_id": "6aa02", "quantity": 1}]},
+                {"order_id": "ORD-77630", "user_id": "USR-10902", "total_amount": 299.99, "status": "Paid", "items": [{"product_id": "6aa01", "quantity": 1}]},
+                {"order_id": "ORD-77631", "user_id": "USR-10114", "total_amount": 649.00, "status": "Paid", "items": [{"product_id": "6aa02", "quantity": 1}]}
+            ])
+            pdf_data = generate_daily_order_pdf(orders_list)
+            subject = f"📊 SmartRetailX Executive Daily Sales & Revenue Report ({datetime.utcnow().strftime('%Y-%m-%d')})"
+            details_html = f"""
+            <p style="margin-top: 0;"><strong>Executive Sales Summary:</strong> Find attached the operational PDF report containing today's order statistics, fulfillment metrics, and gross turnover.</p>
+            <table width="100%" border="0" cellpadding="10" cellspacing="0" style="margin: 20px 0; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="font-weight: bold; color: #374151;">Total Orders Processed:</td>
+                    <td style="color: #0f172a; font-weight: bold;">{len(orders_list)} Orders</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="font-weight: bold; color: #374151;">Gross Revenue:</td>
+                    <td style="color: #16a34a; font-weight: 800; font-size: 16px;">${sum(o.get('total_amount', 0) for o in orders_list):.2f}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: bold; color: #374151;">Fulfillment Status:</td>
+                    <td style="color: #2563eb; font-weight: bold;">100% On-Schedule</td>
+                </tr>
+            </table>
+            <p>Please review the attached PDF file (<b>daily_orders_summary.pdf</b>) for full financial transaction breakdown.</p>
+            """
+            html_body = get_styled_email_template(
+                title="Daily Executive Revenue & Sales Report",
+                alert_type="info",
+                details_html=details_html,
+                cta_url="http://acf2c1e42f71e4b2db6d48e48e03c6e2-415335565.us-east-1.elb.amazonaws.com",
+                cta_text="View Storefront Analytics"
+            )
+            recipient_email = os.getenv("SES_RECIPIENT_EMAIL", "dissanayakesandeep@gmail.com")
+            send_ses_email_with_attachment(
+                subject=subject,
+                html_body=html_body,
+                attachment_data=pdf_data,
+                attachment_name=f"SmartRetailX_Report_{datetime.utcnow().strftime('%Y%m%d')}.pdf",
+                recipient=recipient_email
+            )
+            send_slack_webhook("📊 *EXECUTIVE SALES REPORT*: PDF generated and dispatched.")
+
+        elif event_type == "delivery-milestone":
+            order_id = event_data.get("order_id", "6aa390a3fe64fe485c34ad9f")
+            city = event_data.get("city", "Kandy")
+            driver_name = event_data.get("driver_name", "Ruwan Perera (#LK-4029)")
+            eta = event_data.get("eta", "45 mins")
+            subject = f"🚚 Order #{order_id} Out for Delivery · Sri Lanka Express"
+            details_html = f"""
+            <p style="margin-top: 0; font-size: 16px; color: #0f172a;">Your package is now out for delivery with our express dispatch fleet!</p>
+            <table width="100%" border="0" cellpadding="10" cellspacing="0" style="margin: 20px 0; background-color: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+                <tr style="border-bottom: 1px solid #dcfce7;">
+                    <td style="font-weight: bold; color: #166534; width: 35%;">Assigned Courier:</td>
+                    <td style="color: #14532d; font-weight: 700;">{driver_name}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #dcfce7;">
+                    <td style="font-weight: bold; color: #166534;">Destination City:</td>
+                    <td style="color: #14532d; font-weight: 700;">{city}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: bold; color: #166534;">Estimated Arrival:</td>
+                    <td style="color: #15803d; font-weight: 900; font-size: 16px;">⏱️ {eta}</td>
+                </tr>
+            </table>
+            <p style="color: #475569; font-size: 13px;">Real-time GPS telemetry is synchronizing driver coordinates along the Colombo-Kandy A1 highway corridor.</p>
+            """
+            html_body = get_styled_email_template(
+                title="Out for Delivery Update",
+                alert_type="info",
+                details_html=details_html,
+                cta_url="http://acf2c1e42f71e4b2db6d48e48e03c6e2-415335565.us-east-1.elb.amazonaws.com",
+                cta_text="Track Live Delivery Vehicle"
+            )
+            recipient_email = os.getenv("SES_RECIPIENT_EMAIL", "dissanayakesandeep@gmail.com")
+            send_ses_email(subject, html_body, recipient=recipient_email)
 
             
         # Increment metric

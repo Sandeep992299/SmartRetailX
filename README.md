@@ -1,14 +1,23 @@
-# SmartRetailX: Cloud-Native Distributed Commerce Platform
+# 🚀 SmartRetailX: Cloud-Native Distributed Commerce Platform
 
-SmartRetailX is a modern, event-driven, microservices-based e-commerce platform built to replace a legacy monolithic application. It is designed for high availability, multi-region scalability, and real-time transaction processing.
+<p align="center">
+  <img src="https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazon-aws&logoColor=white" alt="AWS" />
+  <img src="https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="Kubernetes" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/Terraform-7B42BC?style=for-the-badge&logo=terraform&logoColor=white" alt="Terraform" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+</p>
 
-This repository contains the complete source code, infrastructure-as-code blueprints (Terraform), Kubernetes manifests (EKS), testing scripts, and technical documentation.
+SmartRetailX is a modern, enterprise-grade, event-driven microservices e-commerce platform built to replace legacy monolithic systems. It is engineered for high availability, multi-AZ security isolation, real-time transaction processing, and automated cloud scaling.
+
+This repository hosts the complete source code, Infrastructure-as-Code (Terraform) configurations, Kubernetes manifests (EKS), automated tests, and deployment blueprints.
 
 ---
 
 ## 🏗️ System Architecture
 
-The architecture consists of a React-based frontend dashboard that interacts with a Python (FastAPI) API Gateway. The Gateway manages rate limiting and distributes traffic across decoupled, database-isolated microservices. Core services save data in a document database (MongoDB/DocumentDB) for schema flexibility, while the Payment Service runs a relational SQL database (PostgreSQL/RDS) to ensure strict transactional integrity (ACID). An event stream broker (Kafka) manages asynchronous communication, and AWS Lambda processes event-driven notifications.
+The platform features a Vite+React frontend dashboard talking to a FastAPI API Gateway. The Gateway decrypts JWT signatures, controls client request rate limiting, and forwards traffic to decoupled, database-isolated microservices.
 
 ```
                   ┌──────────────────────────────┐
@@ -21,19 +30,19 @@ The architecture consists of a React-based frontend dashboard that interacts wit
                   └──────────────┬───────────────┘
          ┌───────────────────────┼───────────────────────┐
          ▼                       ▼                       ▼
-┌────────────────┐      ┌────────────────┐      ┌────────────────┐
-│  User Service  │      │ Product Service│      │  Order Service │
-└────────┬───────┘      └────────┬───────┘      └────────┬───────┘
-         │                       │                       │
-         └─────────────┬─────────┴───────────────────────┘
-                       ▼
-               ┌──────────────┐                  ┌──────────────┐
-               │MongoDB Database◄────────────────►Inventory Serv.│
-               └──────────────┘                  └───────┬──────┘
-                                                         │
-                                                         ▼
-                                                 [Kafka Event Bus]
-                                                         │
+ ┌────────────────┐      ┌────────────────┐      ┌────────────────┐
+ │  User Service  │      │ Product Service│      │  Order Service │
+ └────────┬───────┘      └────────┬───────┘      └────────┬───────┘
+          │                       │                       │
+          └─────────────┬─────────┴───────────────────────┘
+                        ▼
+                ┌──────────────┐                  ┌──────────────┐
+                │MongoDB Database◄────────────────►Inventory Serv.│
+                └──────────────┘                  └───────┬──────┘
+                                                          │
+                                                          ▼
+                                                  [Kafka Event Bus]
+                                                          │
          ┌───────────────────────────────────────────────┴──────┐
          ▼                                                      ▼
 ┌────────────────┐                                     ┌────────────────┐
@@ -42,18 +51,19 @@ The architecture consists of a React-based frontend dashboard that interacts wit
          │                                                      │ WebSockets
          ▼                                                      ▼
  ┌──────────────┐                                       [User Dashboard]
- │ PostgreSQL DB│
+  │ PostgreSQL DB│
  └──────────────┘
 ```
 
-### Core Architecture Components
-1. **API Gateway (Port 8000)**: Serves as the single ingress point. Performs API routing (`/api/v1/*`), handles JSON Web Token (JWT) verification, and applies Redis-backed client rate-limiting.
-2. **User Management Service (Port 8001)**: Manages users registration, credentials hashing (bcrypt), authentication, and Role-Based Access Control (RBAC) storing data in MongoDB.
-3. **Product Catalogue Service (Port 8002)**: Standard product catalog queries, using Redis for query caching and storing collections in MongoDB. Image assets are hosted on an S3 Bucket.
-4. **Order Processing Service (Port 8003)**: Places customer orders in MongoDB, publishing checkout events to Kafka.
-5. **Payment Service (Port 8004)**: Consumes Kafka checkout events, performs transactional payment charges, commits records to a PostgreSQL database (retaining ACID consistency), and publishes success status.
-6. **Inventory Management Service (Port 8005)**: Consumes Kafka checkouts, manages stock levels in MongoDB, caches counts in Redis, and emits low-stock alerts.
-7. **Notification Service (AWS Lambda)**: A serverless function triggered by Event Queues. Broadcasts real-time notifications to the frontend via WebSockets.
+### ⚙️ Core Components:
+1. **API Gateway (Port 8000)**: Singular ingress entrypoint. Manages API route mapping, handles **JWT Decryption & Verification**, and applies Redis-backed client rate-limiting.
+2. **User Service (Port 8001)**: Handles registration, credential hashing (bcrypt), authentication, and Role-Based Access Control (RBAC) on MongoDB.
+3. **Product Catalog Service (Port 8002)**: Catalogs inventory collections, using Redis queries caching. Image binaries reside on S3.
+4. **Order Service (Port 8003)**: Places user purchases inside MongoDB, emitting `order-created` event streams to Apache Kafka.
+5. **Payment Service (Port 8004)**: Decoupled transactional billing. Consumes Kafka orders, processes charges, updates a relational RDS PostgreSQL instance (guaranteeing ACID compliance), and publishes payment success events.
+6. **Inventory Service (Port 8005)**: Decoupled warehouse manager. Tracks remaining counts, updates MongoDB, and publishes `low-stock-alert` triggers.
+7. **Serverless Notifier (AWS Lambda & SQS)**: Operates serverless batch alerting using SQS triggers and SES email dispatching.
+8. **EventBridge Scheduler**: Drives cron-scheduled operational checkups and compiles daily order transaction ledgers into PDF attachments.
 
 ---
 
@@ -67,35 +77,48 @@ SmartRetailX/
 ├── order-service/          # FastAPI Order Service (MongoDB & Kafka backend)
 ├── payment-service/        # FastAPI Payment processor (PostgreSQL SQL backend)
 ├── inventory-service/      # FastAPI Inventory manager (MongoDB & Redis backend)
-├── notification-service/   # AWS Lambda notification handler & WebSocket broadcast
-├── frontend/               # Vite + React single-page dashboard application (Nginx multi-stage build)
-├── k8s/                    # EKS Kubernetes deployments, services, Ingress, HPA, and databases
+├── notification-service/   # AWS Lambda notification handler, PDF generator, and SQS/EventBridge triggers
+├── frontend/               # Vite + React single-page dashboard application (Nginx wrapper)
+├── k8s/                    # EKS Kubernetes deployments, services, Ingress, HPA, and logging namespace config
 ├── terraform/              # AWS Infrastructure blueprints (modular structure)
 │   ├── main.tf
-│   ├── vpc/                # Networking (VPC, Subnets, NAT, IGW)
-│   ├── eks/                # EKS Cluster and Worker Nodes
-│   ├── msk/                # Amazon MSK (Managed Kafka Broker)
+│   ├── vpc/                # Multi-AZ subnets, NAT Gateways, Internet Gateway
+│   ├── eks/                # EKS Cluster, node groups, and cluster policies
+│   ├── msk/                # Amazon Managed Streaming for Apache Kafka
 │   ├── rds/                # Amazon RDS PostgreSQL instance
-│   ├── elasticache/        # Amazon ElastiCache Redis Cluster
-│   ├── documentdb/         # Amazon DocumentDB MongoDB cluster
+│   ├── elasticache/        # Amazon ElastiCache Redis cluster
+│   ├── documentdb/         # Amazon DocumentDB cluster
 │   ├── s3/                 # AWS S3 Bucket for website image assets
-│   └── lambda/             # AWS Lambda and IAM Execution roles
-├── tests/                  # Integration test suite (pytest) & load scripts (k6)
-└── docs/                   # Assignment report, slides, and walkthrough.md
+│   └── lambda/             # AWS Lambda rules, EventBridge scheduler & IAM permission mappings
+├── tests/                  # Pytest verification suites, Bruno collections, and k6 load tests
+└── docs/                   # Walkthroughs, slides, network CIDRs, and API specifications
 ```
 
 ---
 
-## 🚀 Getting Started (Local Development)
+## 🔒 Security, Telemetry & Scheduling
 
-The entire microservice topology can be launched locally using Docker Compose, including Kafka, Redis, PostgreSQL, and MongoDB.
+### 🔑 JSON Web Tokens (JWT) & API Gateway Protection
+* JWT keys containing user IDs, signatures, and roles (`Customer`, `Manager`, `Admin`) are created by the `user-service`.
+* The API Gateway enforces signature authentication using a shared `JWT_SECRET`. Tampered tokens or mismatched algorithms (like `"alg": "none"` attacks) are immediately blocked with a `401 Unauthorized` status response.
+* Check out the [API Endpoint Specifications](docs/api_specifications.md) for request/response payloads.
 
-### Prerequisites
-- Docker & Docker Compose
-- Python 3.10+ (optional, for running local script tests)
-- Node.js (optional, for local frontend compilation)
+### 📅 Amazon EventBridge Scheduling
+* **Low-Stock Triggers**: Intercepts custom events (`smartretailx.inventory`) on low stock thresholds and forwards them to the serverless notifier.
+* **Daily Sales Summary Report**: Executes a cron schedule at **11:59 PM UTC** (`cron(59 23 * * ? *)`) to query order ledgers, programmatically compile a styled PDF document using ReportLab, and email it as a raw MIME attachment via SES.
+* **System Health Check Cron**: Triggers a daily operational checkup at **12:00 PM UTC** (`cron(0 12 * * ? *)`).
 
-### Quick Start
+### 📡 Telemetry & Observability
+* Distributed tracing is implemented across all backend services utilizing **AWS X-Ray SDK**.
+* Metrics and application logs are collected by the **AWS CloudWatch Agent** daemonset.
+
+---
+
+## 🚀 Getting Started
+
+### Local Development (Docker Compose)
+You can launch the entire microservice topology locally, including Kafka, Redis, PostgreSQL, and MongoDB:
+
 1. Clone the repository and navigate to the directory:
    ```bash
    cd SmartRetailX
@@ -104,77 +127,62 @@ The entire microservice topology can be launched locally using Docker Compose, i
    ```bash
    docker-compose up --build
    ```
-3. Open your browser and navigate to:
-   - **Frontend UI Dashboard**: `http://localhost:5173`
-   - **API Gateway Swagger Docs**: `http://localhost:8000/docs`
-   - **Individual Swagger Docs**:
-     - User Service: `http://localhost:8001/docs`
-     - Product Service: `http://localhost:8002/docs`
-     - Order Service: `http://localhost:8003/docs`
-     - Payment Service: `http://localhost:8004/docs`
-     - Inventory Service: `http://localhost:8005/docs`
+3. Open your browser:
+   * **Frontend UI Dashboard**: `http://localhost:5173`
+   * **API Gateway Swagger Docs**: `http://localhost:8000/docs`
+   * **Individual Service Swagger Docs**:
+     * User Service: `http://localhost:8001/docs`
+     * Product Service: `http://localhost:8002/docs`
+     * Order Service: `http://localhost:8003/docs`
+     * Payment Service: `http://localhost:8004/docs`
+     * Inventory Service: `http://localhost:8005/docs`
 
 ---
 
-## 🔒 Security & Identity Management (Task 3)
+## 🛠️ AWS Production Deployment
 
-- **Authentication & Authorization**: Handled via JWT. Users log in via the User Service, which signs a JWT containing the user's role (`Customer`, `Manager`, or `Admin`).
-- **Access Control**: The API Gateway inspects and verifies JWTs before routing to restricted endpoints (e.g. creating products requires `Manager`/`Admin` roles).
-- **Encryption**: Standard TLS 1.3 is mapped on all ingress paths. Database passwords and credentials are injected into container environments via Kubernetes Secrets.
-
----
-
-## ⚡ Event Processing & Real-Time Data (Task 4)
-
-- **Kafka Stream Integration**: Order checkouts are asynchronously sent to the Kafka broker. Payment and Inventory services consume these messages, decouple dependencies, and process updates without halting the frontend.
-- **WebSocket Updates**: The Notification Lambda pushes message streams back to active browser sessions using WebSocket gateways, creating immediate visual feedback.
-
----
-
-## 🛠️ Infrastructure as Code (Terraform)
-
-Deploy the infrastructure on AWS using the following command hierarchy in `/terraform`:
+### 1. Provision Infrastructure (Terraform)
+Deploy the AWS cloud resources using the Terraform module:
 ```bash
 cd terraform
 terraform init
 terraform plan -out=tfplan
-terraform apply tfplan
+terraform apply "tfplan"
 ```
-Each AWS component is split into structured subfolders:
-- `vpc/`: Creates multi-AZ subnets, Routing, and Nat Gateways.
-- `eks/`: Deploys the Kubernetes cluster.
-- `rds/`: Launches a PostgreSQL instance for payments.
-- `documentdb/`: Launches a DocumentDB (MongoDB-compatible) cluster for core services.
-- `s3/`: Configures public assets bucket.
-- `elasticache/`: Spins up Redis for gateway rate limiting and catalog caches.
-- `msk/`: Launches Managed Streaming for Apache Kafka.
-- `lambda/`: Packages and deploys the Notification Lambda.
+
+### 2. Build & Push ECR Images
+Authenticate your Docker CLI and build/push your microservice containers:
+```bash
+aws ecr get-login-password --region us-east-1 --profile your-profile | docker login --username AWS --password-stdin your-registry.dkr.ecr.us-east-1.amazonaws.com
+# Build and push using local build tools
+```
+
+### 3. Deploy Workloads to EKS (Kubernetes)
+Update your local kubeconfig context and apply the manifest configurations:
+```bash
+aws eks update-kubeconfig --name smartretailx-eks-prod --region us-east-1 --profile your-profile
+kubectl create namespace amazon-cloudwatch
+kubectl apply -f k8s/
+```
 
 ---
 
 ## 🧪 Testing & Validation
 
-Run the end-to-end integration verification suite:
+Run the pytest integration verification suite:
 ```bash
 pip install -r tests/requirements.txt
 pytest tests/
 ```
 
 ### Performance & Load Testing
-The platform supports load and stress testing using both **k6** and **Apache JMeter**. Detailed setup, comparisons, and report generation instructions are available in the [Performance Testing Guide](docs/performance_testing_guide.md).
+The platform supports load and stress testing using both **k6** and **Apache JMeter**. Detailed setup and comparisons are documented in the [Performance Testing Guide](docs/performance_testing_guide.md).
 
-#### Option 1: k6 (Recommended for CLI-first workflows)
-Run the k6 load test:
-```bash
-k6 run tests/k6_load_test.js
-```
-
-#### Option 2: Apache JMeter (Recommended for report-centric workflows)
-Run the JMeter load test in non-GUI (CLI) mode:
-```bash
-jmeter -n -t tests/jmeter_load_test.jmx -l tests/jmeter_results.jtl
-```
-To override the gateway endpoint dynamically, pass host and port properties:
-```bash
-jmeter -n -t tests/jmeter_load_test.jmx -l tests/jmeter_results.jtl -JGATEWAY_HOST=localhost -JGATEWAY_PORT=8000
-```
+* **k6 load test**:
+  ```bash
+  k6 run tests/k6_load_test.js
+  ```
+* **Apache JMeter load test**:
+  ```bash
+  jmeter -n -t tests/jmeter_load_test.jmx -l tests/jmeter_results.jtl -JGATEWAY_HOST=localhost -JGATEWAY_PORT=8000
+  ```

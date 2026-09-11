@@ -34,9 +34,23 @@ spec:
             memory: "128Mi"
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
-          value: "b-1.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092"
+          value: "b-1.prodkafkabroker.f7pd71.c24.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.f7pd71.c24.kafka.us-east-1.amazonaws.com:9092"
+        - name: SES_SENDER_EMAIL
+          value: "dissanayakesandeep@gmail.com"
         - name: SES_RECIPIENT_EMAIL
           value: "dissanayakesandeep@gmail.com"
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_SECRET_ACCESS_KEY
         - name: XRAY_DAEMON_HOST
           valueFrom:
             fieldRef:

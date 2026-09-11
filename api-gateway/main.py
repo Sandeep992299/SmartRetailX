@@ -96,11 +96,15 @@ app.add_middleware(XRayMiddleware)
 http_client = httpx.AsyncClient()
 
 # Rate limiting settings (requests per client IP per minute)
-RATE_LIMIT_MAX = 100
-RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "10000"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 
 def check_rate_limit(client_ip: str) -> tuple:
     """Checks if client IP is within rate limits. Returns (allowed, remaining, reset_seconds)."""
+    # Don't rate limit internal k8s ingress/cluster networking
+    if client_ip.startswith(("10.", "172.", "192.168.", "127.0.0.1", "localhost")):
+        return True, RATE_LIMIT_MAX, 60
+
     now = int(time.time())
     reset_seconds = RATE_LIMIT_WINDOW - (now % RATE_LIMIT_WINDOW)
     
@@ -121,7 +125,7 @@ def check_rate_limit(client_ip: str) -> tuple:
     count = in_memory_rate_limits.get(key, 0) + 1
     in_memory_rate_limits[key] = count
     
-    if len(in_memory_rate_limits) > 5000:
+    if len(in_memory_rate_limits) > 10000:
         in_memory_rate_limits.clear()
         
     allowed = count <= RATE_LIMIT_MAX
@@ -146,15 +150,21 @@ metrics_latency_count = 0
 
 @app.middleware("http")
 async def gateway_middleware(request: Request, call_next):
-    # Get client IP
-    client_ip = request.client.host if request.client else "unknown-ip"
+    # Get client IP with X-Forwarded-For support
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    elif request.headers.get("X-Real-IP"):
+        client_ip = request.headers.get("X-Real-IP").strip()
+    else:
+        client_ip = request.client.host if request.client else "unknown-ip"
     
     # Generate/Retrieve Correlation ID
     correlation_id = request.headers.get("X-Correlation-ID") or f"corr_{int(time.time())}_{os.urandom(4).hex()}"
     
     # Apply Rate Limiting (exclude Swagger docs, metrics endpoint, and static files)
     allowed, remaining, reset_seconds = True, RATE_LIMIT_MAX, 60
-    if not request.url.path.startswith(("/docs", "/openapi.json", "/redoc", "/metrics")):
+    if not request.url.path.startswith(("/docs", "/openapi.json", "/redoc", "/metrics", "/health")):
         allowed, remaining, reset_seconds = check_rate_limit(client_ip)
         if not allowed:
             res = Response(

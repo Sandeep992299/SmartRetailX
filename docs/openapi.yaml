@@ -1,0 +1,353 @@
+openapi: 3.0.0
+info:
+  title: SmartRetailX Microservices API
+  description: Complete API specifications contract for the cloud-native SmartRetailX e-commerce platform. Covers user auth, catalog queries, order placement, payments, and inventory warehouse telemetry.
+  version: 1.0.0
+servers:
+  - url: http://abc3dc5c1549c4f829ade5d0c65a0af6-939735814.us-east-1.elb.amazonaws.com:8000/api/v1
+    description: Production EKS API Gateway LoadBalancer
+  - url: http://localhost:8000/api/v1
+    description: Local Docker Compose Gateway Ingress
+paths:
+  /users/signup:
+    post:
+      summary: Register a new customer
+      description: Creates a user account with a default role of 'Customer' and salts the password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  example: sandeep
+                email:
+                  type: string
+                  format: email
+                  example: dissanayakesandeep@gmail.com
+                password:
+                  type: string
+                  format: password
+                  example: SecurePassword123!
+      responses:
+        '201':
+          description: User registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Username or email already exists.
+
+  /users/login:
+    post:
+      summary: Authenticate user
+      description: Verifies user credentials and issues a signed JWT token containing claims and user role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: sandeep
+                password:
+                  type: string
+                  format: password
+                  example: SecurePassword123!
+      responses:
+        '200':
+          description: Login successful. JWT token returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  token_type:
+                    type: string
+                    example: bearer
+        '401':
+          description: Invalid username or password.
+
+  /users/me:
+    get:
+      summary: Get current profile details
+      description: Decrypts and validates bearer JWT from headers to retrieve active user context.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile fetched.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Invalid or expired JWT token.
+
+  /products:
+    get:
+      summary: Retrieve all product catalog collections
+      description: Returns a cached list of active shopping products.
+      responses:
+        '200':
+          description: A list of products.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+    post:
+      summary: Create new catalog item
+      description: Adds a new product configuration to MongoDB and flushes Redis cache. Restricted to admins/managers.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Product created successfully.
+        '403':
+          description: Forbidden. Insufficient RBAC permission.
+
+  /products/{product_id}:
+    get:
+      summary: Get product details
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+    delete:
+      summary: Delete product from catalog
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product deleted successfully.
+        '403':
+          description: Forbidden. Insufficient RBAC permission.
+
+  /orders:
+    post:
+      summary: Place order checkout
+      description: Validates JWT token, computes total pricing, creates order state, and triggers MSK/Kafka billing streams.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - items
+                - shipping_address
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: string
+                        example: PRD-001
+                      quantity:
+                        type: integer
+                        example: 2
+                shipping_address:
+                  type: string
+                  example: 123 Main St, London, UK
+      responses:
+        '201':
+          description: Order pending created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+  /payments/process:
+    post:
+      summary: Process transaction
+      description: Validates card credentials against mock payment gateway and processes payment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - order_id
+                - amount
+                - card_number
+                - card_name
+                - cvv
+                - expiry
+              properties:
+                order_id:
+                  type: string
+                  example: ORD-77629
+                amount:
+                  type: number
+                  example: 159.98
+                card_number:
+                  type: string
+                  example: "4111222233334444"
+                card_name:
+                  type: string
+                  example: Sandeep Dissanayake
+                cvv:
+                  type: string
+                  example: "123"
+                expiry:
+                  type: string
+                  example: 12/28
+      responses:
+        '200':
+          description: Payment transaction processed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction_id:
+                    type: string
+                    example: TXN-00998822
+                  status:
+                    type: string
+                    example: approved
+                  message:
+                    type: string
+                    example: Payment captured successfully.
+
+  /inventory:
+    get:
+      summary: Retrieve all warehouse stock counts
+      responses:
+        '200':
+          description: Table of product quantities.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    product_id:
+                      type: string
+                      example: PRD-001
+                    stock_count:
+                      type: integer
+                      example: 48
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 65cf9c47e8f5e93c788e3c2b
+        username:
+          type: string
+          example: sandeep
+        email:
+          type: string
+          example: dissanayakesandeep@gmail.com
+        role:
+          type: string
+          example: Customer
+    Product:
+      type: object
+      properties:
+        product_id:
+          type: string
+          example: PRD-001
+        name:
+          type: string
+          example: Smart Wireless Earbuds
+        category:
+          type: string
+          example: Electronics
+        price:
+          type: number
+          example: 79.99
+        description:
+          type: string
+          example: True wireless earbuds with active noise cancellation.
+    ProductInput:
+      type: object
+      required:
+        - name
+        - category
+        - price
+      properties:
+        name:
+          type: string
+          example: Mechanical Keyboard
+        category:
+          type: string
+          example: Electronics
+        price:
+          type: number
+          example: 120.00
+        description:
+          type: string
+          example: Tactile blue switch keyboard with RGB backlights.
+    Order:
+      type: object
+      properties:
+        order_id:
+          type: string
+          example: ORD-77629
+        user_id:
+          type: string
+          example: 65cf9c47e8f5e93c788e3c2b
+        total_amount:
+          type: number
+          example: 159.98
+        status:
+          type: string
+          example: pending
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-08-19T08:16:00Z

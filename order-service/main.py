@@ -2,6 +2,7 @@ import os
 import json
 import time
 import threading
+import urllib.request
 from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Request
@@ -48,6 +49,9 @@ class OrderItemBase(BaseModel):
     product_name: str
     price: float
     quantity: int
+    image_url: Optional[str] = ""
+    description: Optional[str] = ""
+    category: Optional[str] = ""
 
     @validator("price")
     def price_must_be_positive(cls, v):
@@ -63,6 +67,8 @@ class OrderItemBase(BaseModel):
 
 class OrderCreate(BaseModel):
     items: List[OrderItemBase]
+    shipping_address: Optional[str] = "No. 45, Galle Road, Colombo 03"
+    city: Optional[str] = "Colombo"
 
 class OrderResponse(BaseModel):
     id: str
@@ -72,6 +78,9 @@ class OrderResponse(BaseModel):
     status: str
     created_at: str
     items: List[OrderItemBase]
+    shipping_address: Optional[str] = "No. 45, Galle Road, Colombo 03"
+    city: Optional[str] = "Colombo"
+    delivery_status: Optional[str] = "In Transit - Dispatched from Colombo Central Hub"
     ip_address: Optional[str] = "unknown-ip"
     correlation_id: Optional[str] = "unknown-correlation"
 
@@ -169,18 +178,40 @@ def publish_order_event(event_type: str, order_doc: dict):
             "user_email": order_doc["user_email"],
             "total_amount": order_doc["total_amount"],
             "status": order_doc["status"],
+            "shipping_address": order_doc.get("shipping_address", ""),
+            "city": order_doc.get("city", "Colombo"),
+            "delivery_status": order_doc.get("delivery_status", ""),
             "correlation_id": order_doc.get("correlation_id", "unknown-correlation"),
             "items": [
                 {
-                    "product_id": item["product_id"],
-                    "product_name": item["product_name"],
-                    "price": item["price"],
-                    "quantity": item["quantity"]
+                    "product_id": item.get("product_id", ""),
+                    "product_name": item.get("product_name", "Item"),
+                    "price": item.get("price", 0.0),
+                    "quantity": item.get("quantity", 1),
+                    "image_url": item.get("image_url", ""),
+                    "description": item.get("description", ""),
+                    "category": item.get("category", "")
                 } for item in order_doc["items"]
             ]
         }
     }
     
+    # Forward directly to notification-service via HTTP
+    def send_http_notification(payload):
+        notification_url = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8006/events")
+        try:
+            req = urllib.request.Request(
+                notification_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            urllib.request.urlopen(req, timeout=4)
+            print(f"Dispatched event '{event_type}' directly to Notification Service ({notification_url})")
+        except Exception as err:
+            print(f"Could not forward event directly to Notification Service ({notification_url}): {err}")
+
+    threading.Thread(target=send_http_notification, args=(event_payload,), daemon=True).start()
+
     if kafka_producer:
         try:
             kafka_producer.send(ORDER_EVENTS_TOPIC, value=event_payload)
@@ -207,6 +238,9 @@ def format_order_doc(doc) -> dict:
         "status": doc.get("status", "Pending"),
         "created_at": doc.get("created_at", ""),
         "items": doc["items"],
+        "shipping_address": doc.get("shipping_address", "No. 45, Galle Road, Colombo 03"),
+        "city": doc.get("city", "Colombo"),
+        "delivery_status": doc.get("delivery_status", "In Transit - Dispatched from Colombo Central Hub"),
         "ip_address": doc.get("ip_address", "unknown-ip"),
         "correlation_id": doc.get("correlation_id", "unknown-correlation")
     }
@@ -230,6 +264,9 @@ def create_order(
         total = sum(item.price * item.quantity for item in order_in.items)
         items_list = [item.dict() for item in order_in.items]
         
+        shipping_addr = order_in.shipping_address or "No. 45, Galle Road, Colombo 03"
+        dest_city = order_in.city or "Colombo"
+        
         order_doc = {
             "user_id": x_user_id,
             "user_email": x_user_email or "unknown@smartretailx.com",
@@ -237,6 +274,9 @@ def create_order(
             "status": "Pending",
             "created_at": datetime.utcnow().isoformat(),
             "items": items_list,
+            "shipping_address": shipping_addr,
+            "city": dest_city,
+            "delivery_status": f"In Transit - En Route from Colombo Central Hub to {dest_city}",
             "ip_address": x_forwarded_for or (request.client.host if request.client else "unknown-ip"),
             "correlation_id": x_correlation_id or f"corr_fallback_{int(time.time())}"
         }
@@ -252,6 +292,18 @@ def create_order(
         
         # Asynchronously trigger Kafka workflow
         publish_order_event("order-created", formatted)
+        
+        # Automatic background settlement worker to transition order from Pending -> Paid
+        def async_settle_order(oid_str):
+            time.sleep(2.5) # Simulate PG settlement time
+            try:
+                from bson import ObjectId
+                db.orders.update_one({"_id": ObjectId(oid_str)}, {"$set": {"status": "Paid"}})
+                print(f"Order #{oid_str} automatically settled to 'Paid'")
+            except Exception as ex:
+                print(f"Error settling order {oid_str}: {ex}")
+        
+        threading.Thread(target=async_settle_order, args=(str(order_doc["_id"]),), daemon=True).start()
         
         return formatted
     except Exception as e:

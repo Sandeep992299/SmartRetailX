@@ -34,7 +34,7 @@ spec:
             memory: "128Mi"
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
-          value: "b-1.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.0irq9n.c4.kafka.us-east-1.amazonaws.com:9092"
+          value: "b-1.prodkafkabroker.f7pd71.c24.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.f7pd71.c24.kafka.us-east-1.amazonaws.com:9092"
         - name: DATABASE_URL
           # In Production, this points to AWS RDS Instance
           value: "postgresql://postgres:SuperSecurePass123!@rds-postgres-service:5432/smartretailx_payments"
