@@ -2,6 +2,7 @@ import os
 import json
 import time
 import threading
+import urllib.request
 from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header
@@ -187,7 +188,7 @@ def update_redis_cache(product_id: str, stock: int):
         except Exception as e:
             print(f"Redis cache write error: {e}")
 
-def publish_inventory_event(event_type: str, product_id: str, name: str, current_stock: int):
+def publish_inventory_event(event_type: str, product_id: str, name: str, current_stock: int, image_url: str = None):
     event_payload = {
         "event_id": f"evt_inv_{product_id}_{int(time.time())}",
         "event_type": event_type,
@@ -195,10 +196,27 @@ def publish_inventory_event(event_type: str, product_id: str, name: str, current
         "data": {
             "product_id": product_id,
             "product_name": name,
-            "stock_count": current_stock
+            "stock_count": current_stock,
+            "image_url": image_url or ""
         }
     }
     
+    # 1. Forward directly to notification-service via HTTP
+    def send_http_notification(payload):
+        notification_url = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8006/events")
+        try:
+            req = urllib.request.Request(
+                notification_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            urllib.request.urlopen(req, timeout=4)
+            print(f"Dispatched inventory event '{event_type}' directly to Notification Service ({notification_url})")
+        except Exception as err:
+            print(f"Could not forward inventory event to Notification Service ({notification_url}): {err}")
+
+    threading.Thread(target=send_http_notification, args=(event_payload,), daemon=True).start()
+
     if kafka_producer:
         try:
             kafka_producer.send(INVENTORY_EVENTS_TOPIC, value=event_payload)
@@ -239,7 +257,7 @@ def handle_order_created(order_data: dict):
                 )
                 
                 # Check low-stock threshold
-                if new_stock < 5:
+                if new_stock <= 5:
                     publish_inventory_event("low-stock-alert", product_id, db_item["product_name"], new_stock)
                     
                 update_redis_cache(product_id, new_stock)
@@ -440,7 +458,11 @@ def update_stock(
     
     updated_item = db.inventory.find_one({"product_id": product_id})
     update_redis_cache(product_id, update.stock_count)
-    publish_inventory_event("inventory-restocked", product_id, updated_item["product_name"], update.stock_count)
+    
+    if update.stock_count <= 5:
+        publish_inventory_event("low-stock-alert", product_id, updated_item["product_name"], update.stock_count)
+    else:
+        publish_inventory_event("inventory-restocked", product_id, updated_item["product_name"], update.stock_count)
     
     return format_inventory_doc(updated_item)
 

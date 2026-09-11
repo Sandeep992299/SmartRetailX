@@ -13,11 +13,8 @@ data:
         type: cloudwatch
         accessMode: proxy
         jsonData:
-          authType: keys
+          authType: default
           defaultRegion: us-east-1
-        secureJsonData:
-          accessKey: "AKIAYVKCOFMBIDXRA4ID"
-          secretKey: "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"
         editable: true
 ---
 apiVersion: v1
