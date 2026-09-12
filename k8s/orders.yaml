@@ -34,7 +34,7 @@ spec:
             memory: "128Mi"
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
-          value: "b-1.prodkafkabroker.f7pd71.c24.kafka.us-east-1.amazonaws.com:9092,b-2.prodkafkabroker.f7pd71.c24.kafka.us-east-1.amazonaws.com:9092"
+          value: "b-2.prodkafkabroker.4iqg5x.c24.kafka.us-east-1.amazonaws.com:9092,b-1.prodkafkabroker.4iqg5x.c24.kafka.us-east-1.amazonaws.com:9092"
         - name: MONGO_URI
           value: "mongodb://mongodb:27017"
         - name: XRAY_DAEMON_HOST

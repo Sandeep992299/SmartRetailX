@@ -153,21 +153,82 @@ async def inventory_metrics_middleware(request: Request, call_next):
         
     return response
 # Seed database with starting quantities
+DEFAULT_STOCK_MAP = {
+    "Wireless Noise-Canceling Headphones": 50,
+    "Ergonomic Office Chair": 20,
+    "Stainless Steel Water Bottle": 150,
+    "Smart Fitness Tracker": 4, # low stock seed
+    "Mechanical Gaming Keyboard": 40,
+    "Minimalist Leather Wallet": 80,
+    "Sony Ultra-Clear 4K OLED Smart TV": 15,
+    "MacBook Pro M3 Aluminum Laptop": 12,
+    "Studio Professional DSLR Camera": 8,
+    "Wireless Bluetooth Stereo Soundbar": 25,
+    "Smart Home AI Security Camera 360": 35,
+    "Scandinavian Solid Oak Dining Table": 10,
+    "Velvet Luxury Accent Armchair": 14,
+    "Minimalist Walnut Bookshelf": 18,
+    "Modern Arc Floor Reading Lamp": 30,
+    "Memory Foam King Platform Bed": 9,
+    "Ultralight 4-Person Waterproof Camping Tent": 22,
+    "All-Terrain Mountain Trail Bike": 16,
+    "Solar Powered 20000mAh Power Bank": 45,
+    "Thermal Insulated Expedition Backpack 50L": 28,
+    "Portable Stainless Steel Camping Stove": 32,
+    "Classic Tailored Wool Trench Coat": 15,
+    "Polarized Aviator Titanium Sunglasses": 60,
+    "Breathable Aerodynamic Running Sneakers": 40,
+    "Waterproof Chronograph Sapphire Watch": 18,
+    "Handcrafted Full-Grain Leather Duffel Bag": 25
+}
+
 @app.on_event("startup")
 def seed_inventory():
     if db is not None:
         try:
-            if db.inventory.count_documents({}) == 0:
+            # Sync with products collection from smartretailx_products
+            products_col = db.client["smartretailx_products"]["products"]
+            all_prods = list(products_col.find())
+            if all_prods:
+                for idx, prod in enumerate(all_prods):
+                    pid = str(prod["_id"])
+                    pname = prod.get("name", f"Product {idx+1}")
+                    legacy_num = str(idx + 1)
+                    stock_val = DEFAULT_STOCK_MAP.get(pname, 30)
+
+                    existing = db.inventory.find_one({"$or": [
+                        {"product_id": pid},
+                        {"product_id": legacy_num},
+                        {"legacy_id": legacy_num},
+                        {"product_name": pname}
+                    ]})
+                    if existing:
+                        db.inventory.update_one(
+                            {"_id": existing["_id"]},
+                            {"$set": {
+                                "product_id": pid,
+                                "legacy_id": legacy_num,
+                                "product_name": pname
+                            }}
+                        )
+                        update_redis_cache(pid, existing.get("stock_count", stock_val))
+                    else:
+                        db.inventory.insert_one({
+                            "product_id": pid,
+                            "legacy_id": legacy_num,
+                            "product_name": pname,
+                            "stock_count": stock_val,
+                            "reserved_count": 0
+                        })
+                        update_redis_cache(pid, stock_val)
+                print(f"MongoDB inventory synced {len(all_prods)} catalog products.")
+            elif db.inventory.count_documents({}) == 0:
                 starting_stock = [
-                    {"product_id": "1", "product_name": "Wireless Noise-Canceling Headphones", "stock_count": 50, "reserved_count": 0},
-                    {"product_id": "2", "product_name": "Ergonomic Office Chair", "stock_count": 20, "reserved_count": 0},
-                    {"product_id": "3", "product_name": "Stainless Steel Water Bottle", "stock_count": 150, "reserved_count": 0},
-                    {"product_id": "4", "product_name": "Smart Fitness Tracker", "stock_count": 4, "reserved_count": 0}, # low stock seed
-                    {"product_id": "5", "product_name": "Mechanical Gaming Keyboard", "stock_count": 40, "reserved_count": 0},
-                    {"product_id": "6", "product_name": "Minimalist Leather Wallet", "stock_count": 80, "reserved_count": 0}
+                    {"product_id": str(i + 1), "legacy_id": str(i + 1), "product_name": name, "stock_count": qty, "reserved_count": 0}
+                    for i, (name, qty) in enumerate(DEFAULT_STOCK_MAP.items())
                 ]
                 db.inventory.insert_many(starting_stock)
-                print("MongoDB inventory database seeded with starting stock.")
+                print("MongoDB inventory database seeded with all 26 catalog items.")
         except Exception as e:
             print(f"Error seeding inventory: {e}")
 
@@ -246,21 +307,26 @@ def handle_order_created(order_data: dict):
             product_id = str(item["product_id"])
             quantity = item["quantity"]
             
-            db_item = db.inventory.find_one({"product_id": product_id})
+            db_item = db.inventory.find_one({"$or": [
+                {"product_id": product_id},
+                {"legacy_id": product_id},
+                {"product_name": item.get("product_name", "")}
+            ]})
             if db_item:
                 new_reserved = db_item.get("reserved_count", 0) + quantity
                 new_stock = db_item.get("stock_count", 0) - quantity
                 
                 db.inventory.update_one(
-                    {"product_id": product_id},
+                    {"_id": db_item["_id"]},
                     {"$set": {"reserved_count": new_reserved, "stock_count": new_stock}}
                 )
                 
                 # Check low-stock threshold
+                actual_pid = db_item.get("product_id", product_id)
                 if new_stock <= 5:
-                    publish_inventory_event("low-stock-alert", product_id, db_item["product_name"], new_stock)
+                    publish_inventory_event("low-stock-alert", actual_pid, db_item["product_name"], new_stock)
                     
-                update_redis_cache(product_id, new_stock)
+                update_redis_cache(actual_pid, new_stock)
                 
         print(f"Inventory successfully reserved for Order #{order_id}")
     except Exception as e:
@@ -285,11 +351,15 @@ def handle_payment_settled(payment_data: dict):
             for item in items:
                 product_id = str(item["product_id"])
                 quantity = item["quantity"]
-                db_item = db.inventory.find_one({"product_id": product_id})
+                db_item = db.inventory.find_one({"$or": [
+                    {"product_id": product_id},
+                    {"legacy_id": product_id},
+                    {"product_name": item.get("product_name", "")}
+                ]})
                 if db_item:
                     new_reserved = max(0, db_item.get("reserved_count", 0) - quantity)
                     db.inventory.update_one(
-                        {"product_id": product_id},
+                        {"_id": db_item["_id"]},
                         {"$set": {"reserved_count": new_reserved}}
                     )
             print(f"Inventory: Reservations finalized for Order #{order_id}")
@@ -314,15 +384,20 @@ def handle_payment_failed(payment_data: dict):
             for item in items:
                 product_id = str(item["product_id"])
                 quantity = item["quantity"]
-                db_item = db.inventory.find_one({"product_id": product_id})
+                db_item = db.inventory.find_one({"$or": [
+                    {"product_id": product_id},
+                    {"legacy_id": product_id},
+                    {"product_name": item.get("product_name", "")}
+                ]})
                 if db_item:
                     new_reserved = max(0, db_item.get("reserved_count", 0) - quantity)
                     new_stock = db_item.get("stock_count", 0) + quantity
                     db.inventory.update_one(
-                        {"product_id": product_id},
+                        {"_id": db_item["_id"]},
                         {"$set": {"reserved_count": new_reserved, "stock_count": new_stock}}
                     )
-                    update_redis_cache(product_id, new_stock)
+                    actual_pid = db_item.get("product_id", product_id)
+                    update_redis_cache(actual_pid, new_stock)
             print(f"Inventory: Rollback completed for Order #{order_id}")
     except Exception as e:
         print(f"Inventory: Error rolling back reservation: {e}")
@@ -395,7 +470,14 @@ def get_all_inventory():
     if db is None:
         return []
     cursor = db.inventory.find()
-    return [format_inventory_doc(i) for i in cursor]
+    docs = list(cursor)
+    if len(docs) < 26:
+        try:
+            seed_inventory()
+            docs = list(db.inventory.find())
+        except Exception:
+            pass
+    return [format_inventory_doc(i) for i in docs]
 
 @app.get("/inventory/healthz")
 def healthz():
@@ -416,7 +498,7 @@ def get_inventory(product_id: str):
                 global inventory_cache_hits
                 inventory_cache_hits += 1
                 if db is not None:
-                    item = db.inventory.find_one({"product_id": product_id})
+                    item = db.inventory.find_one({"$or": [{"product_id": product_id}, {"legacy_id": product_id}, {"product_name": product_id}]})
                     if item:
                         item["stock_count"] = int(cached_stock)
                         return format_inventory_doc(item)
@@ -428,11 +510,12 @@ def get_inventory(product_id: str):
     if db is None:
         raise HTTPException(status_code=503, detail="Database currently offline")
         
-    item = db.inventory.find_one({"product_id": product_id})
+    item = db.inventory.find_one({"$or": [{"product_id": product_id}, {"legacy_id": product_id}, {"product_name": product_id}]})
     if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
         
-    update_redis_cache(product_id, item.get("stock_count", 0))
+    actual_pid = item.get("product_id", product_id)
+    update_redis_cache(actual_pid, item.get("stock_count", 0))
     return format_inventory_doc(item)
 
 @app.put("/inventory/{product_id}", response_model=InventoryResponse)
@@ -447,22 +530,23 @@ def update_stock(
     if db is None:
         raise HTTPException(status_code=503, detail="Database currently offline")
         
-    item = db.inventory.find_one({"product_id": product_id})
+    item = db.inventory.find_one({"$or": [{"product_id": product_id}, {"legacy_id": product_id}, {"product_name": product_id}]})
     if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
         
     db.inventory.update_one(
-        {"product_id": product_id},
+        {"_id": item["_id"]},
         {"$set": {"stock_count": update.stock_count}}
     )
     
-    updated_item = db.inventory.find_one({"product_id": product_id})
-    update_redis_cache(product_id, update.stock_count)
+    updated_item = db.inventory.find_one({"_id": item["_id"]})
+    actual_pid = updated_item.get("product_id", product_id)
+    update_redis_cache(actual_pid, update.stock_count)
     
     if update.stock_count <= 5:
-        publish_inventory_event("low-stock-alert", product_id, updated_item["product_name"], update.stock_count)
+        publish_inventory_event("low-stock-alert", actual_pid, updated_item["product_name"], update.stock_count)
     else:
-        publish_inventory_event("inventory-restocked", product_id, updated_item["product_name"], update.stock_count)
+        publish_inventory_event("inventory-restocked", actual_pid, updated_item["product_name"], update.stock_count)
     
     return format_inventory_doc(updated_item)
 

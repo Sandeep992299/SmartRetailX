@@ -1249,7 +1249,7 @@ function App() {
               ) : (
                 <div className="store-grid">
                   {filteredProducts.map(p => {
-                    const stockItem = inventory.find(i => i.product_id === p.id);
+                    const stockItem = inventory.find(i => i.product_id === p.id || i.product_name?.toLowerCase() === p.name?.toLowerCase());
                     const isOutOfStock = stockItem && stockItem.stock_count <= 0;
                     return (
                       <div className="store-card" key={p.id} onClick={() => setSelectedProduct(p)}>
